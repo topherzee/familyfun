@@ -62,7 +62,7 @@ class Game extends Phaser.Scene {
 
     // Create Player
 
-    var style = { font: "10px Arial", fill: "#ffffff" };
+    var style = { font: "16px Arial", fill: "#ffffff" };
     var label = this.add.text(0, -30, this.playerName, style);
     label.setOrigin(0.5);
 
@@ -73,7 +73,9 @@ class Game extends Phaser.Scene {
     this.physics.world.enable(this.player);
     this.player.body.setBounce(0.2).setCollideWorldBounds(true);
 
-    this.player.setSize(32, 40, true);
+ 
+    this.player.body.setSize(40, 55, true);
+     this.player.setSize(40, 55, true);
     //this.player.setCircle(32, 0, 0);
 
     this.player.label = label;
@@ -161,7 +163,7 @@ class Game extends Phaser.Scene {
         // CREATE CHARACTER
         const newCharacterData = data[characterKey];
 
-        var style = { font: "10px Arial", fill: "#ffffff" };
+        var style = { font: "16px Arial", fill: "#000" };
         var label = this.add.text(0, -30, newCharacterData.playerName, style);
         label.setOrigin(0.5);
         var mSprite = this.add.sprite(0, 0, "dude");
@@ -176,6 +178,9 @@ class Game extends Phaser.Scene {
 
         this.physics.world.enable(newCharacter);
         newCharacter.body.setBounce(0.2).setCollideWorldBounds(true);
+
+        newCharacter.body.setSize(40, 55, true);
+        newCharacter.setSize(40, 55, true);
 
         this.physics.add.collider(newCharacter, this.platforms);
         this.physics.add.collider(this.player, newCharacter);
