@@ -28,6 +28,8 @@ var config = {
   appId: "1:700818253828:web:62fdcbdc6911df8e0d6d51",
 };
 
+var gfx;
+
 class Game extends Phaser.Scene {
   constructor() {
     super({ key: "Game" });
@@ -37,6 +39,7 @@ class Game extends Phaser.Scene {
     this.playerName = "noname";
     this.previousX = 0;
     this.previousY = 0;
+    this.isDead = false;
     this.updatePlayerPositions.bind(this.updatePlayerPositions);
     this.allPlayers = {};
   }
@@ -45,10 +48,72 @@ class Game extends Phaser.Scene {
     this.load.image("sky", sky);
     this.load.image("ground", ground);
     this.load.spritesheet("dude", dude, { frameWidth: 32, frameHeight: 48 });
-    console.log(this.database);
+    //console.log(this.database);
+  }
+
+  killPlayer(playerNumber){
+    firebase
+        .database()
+        .ref("players/" + playerNumber)
+        .update({
+          isDead: true
+        }).then(function(){
+          //console.log("saved");
+        }).catch(function(error) {
+          //console.log("not saved" + error);
+        });;
   }
 
   create() {
+
+    gfx = this.add.graphics();
+
+    var that = this;
+
+    this.input.keyboard.on('keydown_R', function (event) {
+      console.log('Hello from the R Key!');
+
+      //RESET GAME
+      Object.keys(that.allPlayers).forEach((characterKey) => {
+      
+      firebase
+        .database()
+        .ref("players/" + characterKey)
+        .update({
+          isDead: false
+        });
+
+      });
+    })
+
+  
+
+    this.input.keyboard.on('keydown_K', function (event) {
+
+      console.log('Hello from the K Key!');
+            //console.log(that)
+      //if (this.player){
+        var closest = that.physics.closest(that.player);
+
+        if (closest){
+          const pNumber = closest.gameObject.playerNumber;
+          console.log('Kill player: ' + pNumber)
+          const distance = Phaser.Math.Distance.BetweenPoints(that.player.body.position, closest.position)
+
+          if (distance < 90){
+            setTimeout(function(){ 
+              that.killPlayer(pNumber);
+              console.log("Kill!");
+              }, 3000);
+
+          }
+          
+        }else{
+          console.log("no closest");
+        }
+      //}
+    });
+
     // add Sky background sprit
     this.add.image(400, 300, "sky");
 
@@ -60,36 +125,24 @@ class Game extends Phaser.Scene {
     this.platforms.create(50, 250, "ground");
     this.platforms.create(750, 220, "ground");
 
+    //new ground
+    this.platforms.create(500, 800, "ground").setScale(3).refreshBody();
+    
+    this.platforms.create(900, 675, "ground");
+
     // Create Player
+    var newCharacterData = {
+      playerName: this.playerName,
+      x: 100,
+      y: 450,
+      isDead: false,
+      playerNumber: this.playerNumber
+    }
 
-    var style = { font: "16px Arial", fill: "#ffffff" };
-    var label = this.add.text(0, -30, this.playerName, style);
-    label.setOrigin(0.5);
-
-    //this.playerSprite = this.physics.add.sprite(0, 0, "dude");
     this.playerSprite = this.add.sprite(0, 0, "dude");
+    this.player = this.createCharacter(newCharacterData, this.playerSprite)
 
-    this.player = this.add.container(100, 450, [label, this.playerSprite]);
-    this.physics.world.enable(this.player);
-    this.player.body.setBounce(0.2).setCollideWorldBounds(true);
-
- 
-    this.player.body.setSize(40, 55, true);
-     this.player.setSize(40, 55, true);
-    //this.player.setCircle(32, 0, 0);
-
-    this.player.label = label;
-    //http://labs.phaser.io/edit.html?src=src%5Cgame%20objects%5Ccontainer%5Carcade%20physics%20body%20test.js
-
-    //this.player = this.physics.add.sprite(100, 450, "dude");
     this.player.body.setGravityY(300);
-    //this.player.setBounce(0.2);
-    //this.player.setCollideWorldBounds(true);
-
-    // this.player = this.physics.add.sprite(100, 450, "dude");
-    // this.player.body.setGravityY(300);
-    // this.player.setBounce(0.2);
-    // this.player.setCollideWorldBounds(true);
 
     // Create player animation
     this.anims.create({
@@ -123,83 +176,141 @@ class Game extends Phaser.Scene {
       this.updatePlayerPositions(snapshot.val());
     });
 
+  //Handle changing player name with input field.
     const elName = "playerName";
     const el = document.getElementById(elName);
-    //that = this;
+   
     el.onchange = (event) => {
       this.playerName = event.target.value;
-      this.player.label.setText(this.playerName);
-      //console.log("CHANGEY2: " + that.playerName);
+      const name = this.getName(this.playerName, this.player.isDead)
+      this.player.labelRef.setText(name);
     };
   }
 
+  getName(name, isDead){
+    return name + (isDead ? " - DEAD": "");
+  }
+
+
+  updatePlayerDeath(is, incoming){
+
+    
+    //console.log("update " + is.playerNumber + ": wasDead:" + is.isDead+ ": isDead:" + incoming.isDead)
+
+    if (is.playerName != incoming.playerName
+    || is.isDead != incoming.isDead
+    ) {
+      //console.log("RENAME!")
+      var name = this.getName(incoming.playerName, incoming.isDead)
+      is.labelRef.setText(name);
+    }
+
+    is.playerName = incoming.playerName;
+    is.isDead = incoming.isDead;
+  }
+
+
   updatePlayerPositions(data) {
+    
+    //Update current player (died?)
+    this.updatePlayerDeath(this.player, data[this.player.playerNumber])
+    
+    //Unregister missing players
     Object.keys(this.allPlayers).forEach((characterKey) => {
       if (!data[characterKey]) {
         this.allPlayers[characterKey].destroy();
       }
     });
 
+//Update each player (but not the current player.).
+
     Object.keys(data).forEach((characterKey) => {
+      
       if (this.allPlayers[characterKey] && characterKey != this.playerNumber) {
-        // UPDATE CHARACTER
+        // UPDATE Existing CHARACTER
+        
         const incomingData = data[characterKey];
         const existingCharacter = this.allPlayers[characterKey];
+
+        //Update all existing players - name and death
+        this.updatePlayerDeath(existingCharacter, incomingData)
+
         existingCharacter.x = incomingData.x;
         existingCharacter.y = incomingData.y;
         existingCharacter.body.velocity.x = 0;
         existingCharacter.body.velocity.y = 0;
+        existingCharacter.playerNumber = characterKey;
+
         //console.log(existingCharacter.spriteRef);
         existingCharacter.spriteRef.anims.play(incomingData.animation, true);
 
-        if (existingCharacter.playerName != incomingData.playerName) {
-          existingCharacter.playerName = incomingData.playerName;
-          existingCharacter.labelRef.setText(existingCharacter.playerName);
-        }
       } else if (
         !this.allPlayers[characterKey] &&
         characterKey != this.playerNumber
       ) {
-        // CREATE CHARACTER
+        // CREATE New PLAYERS
         const newCharacterData = data[characterKey];
 
-        var style = { font: "16px Arial", fill: "#000" };
-        var label = this.add.text(0, -30, newCharacterData.playerName, style);
-        label.setOrigin(0.5);
         var mSprite = this.add.sprite(0, 0, "dude");
-
-        var newCharacter = this.add.container(
-          newCharacterData.x,
-          newCharacterData.y,
-          [label, mSprite]
-        );
-        newCharacter.spriteRef = mSprite;
-        newCharacter.labelRef = label;
-
-        this.physics.world.enable(newCharacter);
-        newCharacter.body.setBounce(0.2).setCollideWorldBounds(true);
-
-        newCharacter.body.setSize(40, 55, true);
-        newCharacter.setSize(40, 55, true);
-
+        var newCharacter = this.createCharacter(newCharacterData, mSprite)
         this.physics.add.collider(newCharacter, this.platforms);
         this.physics.add.collider(this.player, newCharacter);
         this.allPlayers[characterKey] = newCharacter;
-
-        // var newCharacter = this.physics.add.sprite(
-        //   newCharacterData.x,
-        //   newCharacterData.y,
-        //   "dude"
-        // );
-        // this.physics.add.collider(newCharacter, this.platforms);
-        // this.physics.add.collider(this.player, newCharacter);
-        // this.allPlayers[characterKey] = newCharacter;
       } else {
+
       }
     });
   }
 
+// function createStar(x, y, vx, vy)
+// {
+//     // var star = stars.get();
+
+//     // if (!star) return;
+
+//     // star
+//     //     .enableBody(true, x, y, true, true)
+//     //     .setVelocity(vx, vy);
+//     console.log('collide!')
+// }
+
+
+  createCharacter(newCharacterData, mSprite) {
+
+      var style
+      if (newCharacterData.playerNumber == this.playerNumber){
+          style = { font: "16px Arial", fill: "#fff" };
+      }else{
+          style = { font: "16px Arial", fill: "#000" };
+      }
+      
+      var name = this.getName(newCharacterData.playerName, newCharacterData.isDead);
+      var label = this.add.text(0, -30, name, style);
+      label.setOrigin(0.5);
+      
+      var newCharacter = this.add.container(
+        newCharacterData.x,
+        newCharacterData.y,
+        [label, mSprite]
+      );
+      newCharacter.spriteRef = mSprite;
+      newCharacter.labelRef = label;
+      newCharacter.isDead = newCharacterData.isDead;
+      newCharacter.playerNumber = newCharacterData.playerNumber;
+
+      this.physics.world.enable(newCharacter);
+      newCharacter.body.setBounce(0.2).setCollideWorldBounds(true);
+
+      newCharacter.body.setSize(40, 55, true);
+      newCharacter.setSize(40, 55, true);
+
+      return newCharacter;
+  }
+
   update() {
+
+
+        
     // Create movement controller
     this.cursors = this.input.keyboard.createCursorKeys();
     if (this.cursors.left.isDown) {
@@ -217,24 +328,46 @@ class Game extends Phaser.Scene {
       this.player.body.setVelocityY(-450);
     }
 
+//Send info to Firebase and the other players.
     if (
       Math.round(this.player.x) != this.previousX ||
-      Math.round(this.player.Y) != this.previousY
+      Math.round(this.player.y) != this.previousY ||
+      this.player.isDead != this.player.previousIsDead
     ) {
       firebase
         .database()
         .ref("players/" + this.playerNumber)
-        .set({
+        .update({
           playerNumber: this.playerNumber,
           playerName: this.playerName,
           x: Math.round(this.player.x),
           y: Math.round(this.player.y),
-          animation: this.playerSprite.anims.currentAnim.key,
+          animation: this.playerSprite.anims.currentAnim.key
         });
     }
     this.previousX = Math.round(this.player.x);
     this.previousY = Math.round(this.player.y);
+    this.player.previousIsDead = this.player.isDead;
+
+
+//DUBGGGINNG
+      var pointer = this.input.activePointer;
+      if (this.player){
+        var closest = this.physics.closest(this.player);
+
+        if (closest){
+          gfx.clear()
+            .lineStyle(2, 0xff3300)
+            .lineBetween(closest.x, closest.y, pointer.x, pointer.y)
+            // .lineStyle(2, 0x0099ff)
+            // .lineBetween(furthest.x, furthest.y, pointer.x, pointer.y);
+        }
+      }
+
   }
+
+
+  
 }
 
 export default Game;
