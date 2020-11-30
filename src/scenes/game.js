@@ -1,3 +1,9 @@
+/*
+NOTES:
+allPlayers does not include the local player.
+The local player must be always taken into account as well.
+*/
+
 import Phaser from "phaser";
 
 import sky from "../assets/sky.png";
@@ -40,7 +46,9 @@ class Game extends Phaser.Scene {
     this.previousX = 0;
     this.previousY = 0;
     this.isDead = false;
+    this.isImposter = false;
     this.updatePlayerPositions.bind(this.updatePlayerPositions);
+    this.getName.bind(this.getName);
     this.allPlayers = {};
   }
 
@@ -64,6 +72,12 @@ class Game extends Phaser.Scene {
         });;
   }
 
+  getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
   create() {
 
     gfx = this.add.graphics();
@@ -74,16 +88,47 @@ class Game extends Phaser.Scene {
       console.log('Hello from the R Key!');
 
       //RESET GAME
-      Object.keys(that.allPlayers).forEach((characterKey) => {
+      var allKeys = Object.keys(that.allPlayers) 
+      allKeys.push(that.playerNumber) 
+
+      console.log(allKeys)
+      allKeys.forEach((id) => {
+        firebase
+          .database()
+          .ref("players/" + id)
+          .update({
+            isDead: false,
+            isImposter: false
+          });
+      });
       
+      //Set the imposter
+      //Get r - a random number between 0 and numplayers-1.
+      var len = allKeys.length; 
+      console.log("l:" + len);
+      var r = that.getRandomInt(0, (len-1))
+      console.log("r:" + r)
+
+      var playerNumber = allKeys[r];
+      // var count = 1;
+      // allKeys.forEach((id) => {
+      //   if (count == r){
+      //     playerNumber = id;
+      //   }
+      //   count++;
+      // });
+      
+
+      //var pn = that.allPlayers[r].playerNumber;
+      console.log("imposter: pn:" + playerNumber)
+
       firebase
         .database()
-        .ref("players/" + characterKey)
+        .ref("players/" + playerNumber)
         .update({
-          isDead: false
+          isImposter: true
         });
 
-      });
     })
 
   
@@ -93,6 +138,13 @@ class Game extends Phaser.Scene {
       console.log('Hello from the K Key!');
             //console.log(that)
       //if (this.player){
+
+        console.log("isImp: " + that.player.isImposter)
+        if (that.player.isImposter == false){
+          console.log("Not imposter, cannot kill")
+        }else{
+
+       
         var closest = that.physics.closest(that.player);
 
         if (closest){
@@ -111,6 +163,8 @@ class Game extends Phaser.Scene {
         }else{
           console.log("no closest");
         }
+         }//is imposter
+
       //}
     });
 
@@ -136,6 +190,7 @@ class Game extends Phaser.Scene {
       x: 100,
       y: 450,
       isDead: false,
+      isImposter: false,
       playerNumber: this.playerNumber
     }
 
@@ -182,13 +237,21 @@ class Game extends Phaser.Scene {
    
     el.onchange = (event) => {
       this.playerName = event.target.value;
-      const name = this.getName(this.playerName, this.player.isDead)
+      const name = this.getName(this.playerName, this.player)
       this.player.labelRef.setText(name);
     };
   }
 
-  getName(name, isDead){
-    return name + (isDead ? " - DEAD": "");
+  getName(name, p){
+    //only show imposter if its the current player.
+    var name2 = name + (p.isDead ? " - DEAD": "");
+    if (p.playerNumber == this.playerNumber){
+      name2 = name2 + (p.isImposter ? " - IMP": "") 
+    }
+
+    //name2 = name2 + (p.isImposter ? " - IMP": "") 
+
+    return name2
   }
 
 
@@ -199,14 +262,16 @@ class Game extends Phaser.Scene {
 
     if (is.playerName != incoming.playerName
     || is.isDead != incoming.isDead
+    || is.isImposter != incoming.isImposter
     ) {
       //console.log("RENAME!")
-      var name = this.getName(incoming.playerName, incoming.isDead)
+      var name = this.getName(incoming.playerName, incoming)
       is.labelRef.setText(name);
     }
 
     is.playerName = incoming.playerName;
     is.isDead = incoming.isDead;
+    is.isImposter = incoming.isImposter;
   }
 
 
@@ -216,46 +281,45 @@ class Game extends Phaser.Scene {
     this.updatePlayerDeath(this.player, data[this.player.playerNumber])
     
     //Unregister missing players
-    Object.keys(this.allPlayers).forEach((characterKey) => {
-      if (!data[characterKey]) {
-        this.allPlayers[characterKey].destroy();
+    Object.keys(this.allPlayers).forEach((id) => {
+      if (!data[id]) {
+        this.allPlayers[id].destroy();
       }
     });
 
 //Update each player (but not the current player.).
 
-    Object.keys(data).forEach((characterKey) => {
+    Object.keys(data).forEach((id) => {
       
-      if (this.allPlayers[characterKey] && characterKey != this.playerNumber) {
+      if (this.allPlayers[id] && id != this.playerNumber) {
         // UPDATE Existing CHARACTER
         
-        const incomingData = data[characterKey];
-        const existingCharacter = this.allPlayers[characterKey];
+        const incomingData = data[id];
+        const player = this.allPlayers[id];
 
         //Update all existing players - name and death
-        this.updatePlayerDeath(existingCharacter, incomingData)
+        this.updatePlayerDeath(player, incomingData)
 
-        existingCharacter.x = incomingData.x;
-        existingCharacter.y = incomingData.y;
-        existingCharacter.body.velocity.x = 0;
-        existingCharacter.body.velocity.y = 0;
-        existingCharacter.playerNumber = characterKey;
+        player.x = incomingData.x;
+        player.y = incomingData.y;
+        player.body.velocity.x = 0;
+        player.body.velocity.y = 0;
+        player.playerNumber = id;
 
-        //console.log(existingCharacter.spriteRef);
-        existingCharacter.spriteRef.anims.play(incomingData.animation, true);
+        //console.log(player.spriteRef);
+        player.spriteRef.anims.play(incomingData.animation, true);
 
       } else if (
-        !this.allPlayers[characterKey] &&
-        characterKey != this.playerNumber
+        !this.allPlayers[id] && id != this.playerNumber
       ) {
         // CREATE New PLAYERS
-        const newCharacterData = data[characterKey];
+        const newCharacterData = data[id];
 
         var mSprite = this.add.sprite(0, 0, "dude");
         var newCharacter = this.createCharacter(newCharacterData, mSprite)
         this.physics.add.collider(newCharacter, this.platforms);
         this.physics.add.collider(this.player, newCharacter);
-        this.allPlayers[characterKey] = newCharacter;
+        this.allPlayers[id] = newCharacter;
       } else {
 
       }
@@ -284,7 +348,7 @@ class Game extends Phaser.Scene {
           style = { font: "16px Arial", fill: "#000" };
       }
       
-      var name = this.getName(newCharacterData.playerName, newCharacterData.isDead);
+      var name = this.getName(newCharacterData.playerName, newCharacterData);
       var label = this.add.text(0, -30, name, style);
       label.setOrigin(0.5);
       
@@ -296,6 +360,7 @@ class Game extends Phaser.Scene {
       newCharacter.spriteRef = mSprite;
       newCharacter.labelRef = label;
       newCharacter.isDead = newCharacterData.isDead;
+      newCharacter.isImposter = newCharacterData.isImposter;
       newCharacter.playerNumber = newCharacterData.playerNumber;
 
       this.physics.world.enable(newCharacter);
