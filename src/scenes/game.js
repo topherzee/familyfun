@@ -52,6 +52,7 @@ class Game extends Phaser.Scene {
     this.allPlayers = {};
   }
 
+  //////// preload() is a special hook, called by Phaser3 engine. ///////////
   preload() {
     this.load.image("sky", sky);
     this.load.image("ground", ground);
@@ -78,6 +79,8 @@ class Game extends Phaser.Scene {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+
+//////// create() is a special hook, called by Phaser3 engine. ///////////
   create() {
 
     gfx = this.add.graphics();
@@ -372,6 +375,8 @@ class Game extends Phaser.Scene {
       return newCharacter;
   }
 
+
+//////// update() is a special hook, called by Phaser3 engine. ///////////
   update() {
 
 
