@@ -14,17 +14,8 @@ import firebase from "firebase/app";
 import "firebase/database";
 import _ from "lodash";
 
-// Add your firebase configs here
-// var config = {
-//   apiKey: "",
-//   authDomain: "",
-//   databaseURL: "",
-//   projectId: "",
-//   storageBucket: "",
-//   messagingSenderId: ""
-// };
-
-var config = {
+//Firebase config
+var firebase_config = {
   apiKey: "AIzaSyDwPOmo6jBoi4ZGkt09PB4IVXHnxwlXkqk",
   authDomain: "familyfun-d8dec.firebaseapp.com",
   databaseURL: "https://familyfun-d8dec.firebaseio.com",
@@ -39,16 +30,16 @@ var gfx;
 class Game extends Phaser.Scene {
   constructor() {
     super({ key: "Game" });
-    firebase.initializeApp(config);
+
+    firebase.initializeApp(firebase_config);
     this.database = firebase.database();
-    this.playerNumber = Math.random().toString().split(".")[1];
+
     this.playerName = "noname";
     this.previousX = 0;
     this.previousY = 0;
-    this.isDead = false;
-    this.isImposter = false;
     this.updatePlayerPositions.bind(this.updatePlayerPositions);
     this.getName.bind(this.getName);
+    this.createCharacter.bind(this.createCharacter);
     this.allPlayers = {};
   }
 
@@ -60,116 +51,9 @@ class Game extends Phaser.Scene {
     //console.log(this.database);
   }
 
-  killPlayer(playerNumber){
-    firebase
-        .database()
-        .ref("players/" + playerNumber)
-        .update({
-          isDead: true
-        }).then(function(){
-          //console.log("saved");
-        }).catch(function(error) {
-          //console.log("not saved" + error);
-        });;
-  }
-
-  getRandomInt(min, max) {
-    min = Math.ceil(min);
-    max = Math.floor(max);
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-
-//////// create() is a special hook, called by Phaser3 engine. ///////////
+  //////// create() is a special hook, called by Phaser3 engine. ///////////
   create() {
-
     gfx = this.add.graphics();
-
-    var that = this;
-
-    this.input.keyboard.on('keydown_R', function (event) {
-      console.log('Hello from the R Key!');
-
-      //RESET GAME
-      var allKeys = Object.keys(that.allPlayers) 
-      allKeys.push(that.playerNumber) 
-
-      console.log(allKeys)
-      allKeys.forEach((id) => {
-        firebase
-          .database()
-          .ref("players/" + id)
-          .update({
-            isDead: false,
-            isImposter: false
-          });
-      });
-      
-      //Set the imposter
-      //Get r - a random number between 0 and numplayers-1.
-      var len = allKeys.length; 
-      console.log("l:" + len);
-      var r = that.getRandomInt(0, (len-1))
-      console.log("r:" + r)
-
-      var playerNumber = allKeys[r];
-      // var count = 1;
-      // allKeys.forEach((id) => {
-      //   if (count == r){
-      //     playerNumber = id;
-      //   }
-      //   count++;
-      // });
-      
-
-      //var pn = that.allPlayers[r].playerNumber;
-      console.log("imposter: pn:" + playerNumber)
-
-      firebase
-        .database()
-        .ref("players/" + playerNumber)
-        .update({
-          isImposter: true
-        });
-
-    })
-
-  
-
-    this.input.keyboard.on('keydown_K', function (event) {
-
-      console.log('Hello from the K Key!');
-            //console.log(that)
-      //if (this.player){
-
-        console.log("isImp: " + that.player.isImposter)
-        if (that.player.isImposter == false){
-          console.log("Not imposter, cannot kill")
-        }else{
-
-       
-        var closest = that.physics.closest(that.player);
-
-        if (closest){
-          const pNumber = closest.gameObject.playerNumber;
-          console.log('Kill player: ' + pNumber)
-          const distance = Phaser.Math.Distance.BetweenPoints(that.player.body.position, closest.position)
-
-          if (distance < 90){
-            setTimeout(function(){ 
-              that.killPlayer(pNumber);
-              console.log("Kill!");
-              }, 3000);
-
-          }
-          
-        }else{
-          console.log("no closest");
-        }
-         }//is imposter
-
-      //}
-    });
 
     // add Sky background sprit
     this.add.image(400, 300, "sky");
@@ -184,7 +68,7 @@ class Game extends Phaser.Scene {
 
     //new ground
     this.platforms.create(500, 800, "ground").setScale(3).refreshBody();
-    
+
     this.platforms.create(900, 675, "ground");
 
     // Create Player
@@ -194,11 +78,21 @@ class Game extends Phaser.Scene {
       y: 450,
       isDead: false,
       isImposter: false,
-      playerNumber: this.playerNumber
-    }
+      playerNumber: Math.random().toString().split(".")[1],
+    };
+    this.player = {};
+    this.player.playerNumber = newCharacterData.playerNumber;
+    console.log("player num1:" + this.player.playerNumber);
 
     this.playerSprite = this.add.sprite(0, 0, "dude");
-    this.player = this.createCharacter(newCharacterData, this.playerSprite)
+
+    this.player = this.createCharacter(
+      newCharacterData,
+      this.playerSprite,
+      true
+    );
+
+    console.log("player num2:" + this.player.playerNumber);
 
     this.player.body.setGravityY(300);
 
@@ -227,48 +121,140 @@ class Game extends Phaser.Scene {
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.player, this.allPlayersGroup);
 
-    var thisPlayerRef = firebase.database().ref("players/" + this.playerNumber);
+    var thisPlayerRef = firebase
+      .database()
+      .ref("players/" + this.player.playerNumber);
     thisPlayerRef.onDisconnect().set({});
     var playersRef = firebase.database().ref("players");
     playersRef.on("value", (snapshot) => {
       this.updatePlayerPositions(snapshot.val());
     });
 
-  //Handle changing player name with input field.
+    //Handle changing player name with input field.
     const elName = "playerName";
     const el = document.getElementById(elName);
-   
+
     el.onchange = (event) => {
       this.playerName = event.target.value;
-      const name = this.getName(this.playerName, this.player)
+      const name = this.getName(this.playerName, this.player);
       this.player.labelRef.setText(name);
     };
+
+    var that = this;
+
+    this.input.keyboard.on("keydown_R", function (event) {
+      console.log("Hello from the R Key!");
+
+      //RESET GAME
+      var allKeys = Object.keys(that.allPlayers);
+      allKeys.push(that.player.playerNumber);
+
+      console.log(allKeys);
+      allKeys.forEach((id) => {
+        firebase
+          .database()
+          .ref("players/" + id)
+          .update({
+            isDead: false,
+            isImposter: false,
+          });
+      });
+
+      //Set the imposter
+
+      //Get r - a random number between 0 and numplayers-1.
+      var len = allKeys.length;
+      console.log("l:" + len);
+      var r = that.getRandomInt(0, len - 1);
+      console.log("r:" + r);
+
+      var playerNumber = allKeys[r];
+
+      console.log("imposter: pn:" + playerNumber);
+
+      firebase
+        .database()
+        .ref("players/" + playerNumber)
+        .update({
+          isImposter: true,
+        });
+    });
+
+    this.input.keyboard.on("keydown_K", function (event) {
+      console.log("Hello from the K Key!");
+      //console.log(that)
+      //if (this.player){
+
+      console.log("isImp: " + that.player.isImposter);
+      if (that.player.isImposter == false) {
+        console.log("Not imposter, cannot kill");
+      } else {
+        var closest = that.physics.closest(that.player);
+
+        if (closest) {
+          const pNumber = closest.gameObject.playerNumber;
+          console.log("Kill player: " + pNumber);
+          const distance = Phaser.Math.Distance.BetweenPoints(
+            that.player.body.position,
+            closest.position
+          );
+
+          if (distance < 90) {
+            setTimeout(function () {
+              that.killPlayer(pNumber);
+              console.log("Kill!");
+            }, 3000);
+          }
+        } else {
+          console.log("no closest");
+        }
+      } //is imposter
+
+      //}
+    });
   }
 
-  getName(name, p){
+  killPlayer(playerNumber) {
+    firebase
+      .database()
+      .ref("players/" + playerNumber)
+      .update({
+        isDead: true,
+      })
+      .then(function () {
+        //console.log("saved");
+      })
+      .catch(function (error) {
+        //console.log("not saved" + error);
+      });
+  }
+
+  getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  getName(name, p) {
     //only show imposter if its the current player.
-    var name2 = name + (p.isDead ? " - DEAD": "");
-    if (p.playerNumber == this.playerNumber){
-      name2 = name2 + (p.isImposter ? " - IMP": "") 
+    var name2 = name + (p.isDead ? " - DEAD" : "");
+    if (p.playerNumber == this.player.playerNumber) {
+      name2 = name2 + (p.isImposter ? " - IMP" : "");
     }
 
-    //name2 = name2 + (p.isImposter ? " - IMP": "") 
+    //name2 = name2 + (p.isImposter ? " - IMP": "")
 
-    return name2
+    return name2;
   }
 
-
-  updatePlayerDeath(is, incoming){
-
-    
-    //console.log("update " + is.playerNumber + ": wasDead:" + is.isDead+ ": isDead:" + incoming.isDead)
-
-    if (is.playerName != incoming.playerName
-    || is.isDead != incoming.isDead
-    || is.isImposter != incoming.isImposter
+  updatePlayerDeath(is, incoming) {
+    if (
+      is.playerName != incoming.playerName ||
+      is.isDead != incoming.isDead ||
+      is.isImposter != incoming.isImposter
     ) {
       //console.log("RENAME!")
-      var name = this.getName(incoming.playerName, incoming)
+      var name = this.getName(incoming.playerName, incoming);
       is.labelRef.setText(name);
     }
 
@@ -277,12 +263,10 @@ class Game extends Phaser.Scene {
     is.isImposter = incoming.isImposter;
   }
 
-
   updatePlayerPositions(data) {
-    
     //Update current player (died?)
-    this.updatePlayerDeath(this.player, data[this.player.playerNumber])
-    
+    this.updatePlayerDeath(this.player, data[this.player.playerNumber]);
+
     //Unregister missing players
     Object.keys(this.allPlayers).forEach((id) => {
       if (!data[id]) {
@@ -290,18 +274,17 @@ class Game extends Phaser.Scene {
       }
     });
 
-//Update each player (but not the current player.).
+    //Update each player (but not the current player.).
 
     Object.keys(data).forEach((id) => {
-      
-      if (this.allPlayers[id] && id != this.playerNumber) {
+      if (this.allPlayers[id] && id != this.player.playerNumber) {
         // UPDATE Existing CHARACTER
-        
+
         const incomingData = data[id];
         const player = this.allPlayers[id];
 
         //Update all existing players - name and death
-        this.updatePlayerDeath(player, incomingData)
+        this.updatePlayerDeath(player, incomingData);
 
         player.x = incomingData.x;
         player.y = incomingData.y;
@@ -311,76 +294,58 @@ class Game extends Phaser.Scene {
 
         //console.log(player.spriteRef);
         player.spriteRef.anims.play(incomingData.animation, true);
-
-      } else if (
-        !this.allPlayers[id] && id != this.playerNumber
-      ) {
+      } else if (!this.allPlayers[id] && id != this.player.playerNumber) {
         // CREATE New PLAYERS
         const newCharacterData = data[id];
 
         var mSprite = this.add.sprite(0, 0, "dude");
-        var newCharacter = this.createCharacter(newCharacterData, mSprite)
+        var newCharacter = this.createCharacter(
+          newCharacterData,
+          mSprite,
+          false
+        );
         this.physics.add.collider(newCharacter, this.platforms);
         this.physics.add.collider(this.player, newCharacter);
         this.allPlayers[id] = newCharacter;
       } else {
-
       }
     });
   }
 
-// function createStar(x, y, vx, vy)
-// {
-//     // var star = stars.get();
+  createCharacter(newCharacterData, mSprite, isCurrentPlayer) {
+    var style;
+    if (isCurrentPlayer) {
+      style = { font: "16px Arial", fill: "#fff" };
+    } else {
+      style = { font: "16px Arial", fill: "#000" };
+    }
 
-//     // if (!star) return;
+    var name = this.getName(newCharacterData.playerName, newCharacterData);
+    var label = this.add.text(0, -30, name, style);
+    label.setOrigin(0.5);
 
-//     // star
-//     //     .enableBody(true, x, y, true, true)
-//     //     .setVelocity(vx, vy);
-//     console.log('collide!')
-// }
+    var newCharacter = this.add.container(
+      newCharacterData.x,
+      newCharacterData.y,
+      [label, mSprite]
+    );
+    newCharacter.spriteRef = mSprite;
+    newCharacter.labelRef = label;
+    newCharacter.isDead = newCharacterData.isDead;
+    newCharacter.isImposter = newCharacterData.isImposter;
+    newCharacter.playerNumber = newCharacterData.playerNumber;
 
+    this.physics.world.enable(newCharacter);
+    newCharacter.body.setBounce(0.2).setCollideWorldBounds(true);
 
-  createCharacter(newCharacterData, mSprite) {
+    newCharacter.body.setSize(40, 55, true);
+    newCharacter.setSize(40, 55, true);
 
-      var style
-      if (newCharacterData.playerNumber == this.playerNumber){
-          style = { font: "16px Arial", fill: "#fff" };
-      }else{
-          style = { font: "16px Arial", fill: "#000" };
-      }
-      
-      var name = this.getName(newCharacterData.playerName, newCharacterData);
-      var label = this.add.text(0, -30, name, style);
-      label.setOrigin(0.5);
-      
-      var newCharacter = this.add.container(
-        newCharacterData.x,
-        newCharacterData.y,
-        [label, mSprite]
-      );
-      newCharacter.spriteRef = mSprite;
-      newCharacter.labelRef = label;
-      newCharacter.isDead = newCharacterData.isDead;
-      newCharacter.isImposter = newCharacterData.isImposter;
-      newCharacter.playerNumber = newCharacterData.playerNumber;
-
-      this.physics.world.enable(newCharacter);
-      newCharacter.body.setBounce(0.2).setCollideWorldBounds(true);
-
-      newCharacter.body.setSize(40, 55, true);
-      newCharacter.setSize(40, 55, true);
-
-      return newCharacter;
+    return newCharacter;
   }
 
-
-//////// update() is a special hook, called by Phaser3 engine. ///////////
+  //////// update() is a special hook, called by Phaser3 engine. ///////////
   update() {
-
-
-        
     // Create movement controller
     this.cursors = this.input.keyboard.createCursorKeys();
     if (this.cursors.left.isDown) {
@@ -398,7 +363,8 @@ class Game extends Phaser.Scene {
       this.player.body.setVelocityY(-450);
     }
 
-//Send info to Firebase and the other players.
+    //Send info to Firebase and the other players.
+    //If there is a change...
     if (
       Math.round(this.player.x) != this.previousX ||
       Math.round(this.player.y) != this.previousY ||
@@ -406,38 +372,34 @@ class Game extends Phaser.Scene {
     ) {
       firebase
         .database()
-        .ref("players/" + this.playerNumber)
+        .ref("players/" + this.player.playerNumber)
         .update({
-          playerNumber: this.playerNumber,
+          playerNumber: this.player.playerNumber,
           playerName: this.playerName,
           x: Math.round(this.player.x),
           y: Math.round(this.player.y),
-          animation: this.playerSprite.anims.currentAnim.key
+          animation: this.playerSprite.anims.currentAnim.key,
         });
     }
     this.previousX = Math.round(this.player.x);
     this.previousY = Math.round(this.player.y);
     this.player.previousIsDead = this.player.isDead;
 
+    //DUBGGGINNG
+    var pointer = this.input.activePointer;
+    if (this.player) {
+      var closest = this.physics.closest(this.player);
 
-//DUBGGGINNG
-      var pointer = this.input.activePointer;
-      if (this.player){
-        var closest = this.physics.closest(this.player);
-
-        if (closest){
-          gfx.clear()
-            .lineStyle(2, 0xff3300)
-            .lineBetween(closest.x, closest.y, pointer.x, pointer.y)
-            // .lineStyle(2, 0x0099ff)
-            // .lineBetween(furthest.x, furthest.y, pointer.x, pointer.y);
-        }
+      if (closest) {
+        gfx
+          .clear()
+          .lineStyle(2, 0xff3300)
+          .lineBetween(closest.x, closest.y, pointer.x, pointer.y);
+        // .lineStyle(2, 0x0099ff)
+        // .lineBetween(furthest.x, furthest.y, pointer.x, pointer.y);
       }
-
+    }
   }
-
-
-  
 }
 
 export default Game;
