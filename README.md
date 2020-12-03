@@ -7,15 +7,17 @@ Play game at: https://topherzee.github.io/familyfun/dist/
 The goal is to have a collection of easy to learn mini-games that family can play while video chatting on ZOOM.
 
 The first game is based on 'Werewolf/Mafia/Among Us'
+
 - One player is the "Imposter", they try to kill as many other players without being detected.
 
 - Use arrow keys to move.
 - Imposter can use the 'k' key to kill. (Killed player shows state after 3 seconds.)
 - Use the 'r' key to reset the game and choose a new Imposter.
 
-
 ## Next steps
+
 Imposter game:
+
 - Tidy up code /scenes/game.js
 - Add touchscreen support (iOS and android)
 - Way to reset all players in Firebase (remove 'disconnected' players)
@@ -28,7 +30,7 @@ Imposter game:
 
 - More games!
 - Capture the flag
-- Soccer 
+- Soccer
 - Breakout
 - Stackers
 
@@ -36,8 +38,8 @@ Imposter game:
 
 REPO is here: https://github.com/topherzee/familyfun
 
-
 Get the source-code. Download or Clone:
+
 ```
 git clone https://github.com/topherzee/familyfun.git
 ```
@@ -49,6 +51,7 @@ Be sure you have `yarn` installed. https://yarnpkg.com/
 Open your terminal or 'command prompt' to the location where you installed the repository.
 
 Run:
+
 ```
 > yarn
 > yarn start
@@ -60,11 +63,13 @@ Navigate to http://localhost:1234
 
 Build the game:
 (Builds into the `dist` directory.)
+
 ```
 > yarn build
 ```
 
 Use git to save your changes and deploy:
+
 ```
 > git add --all
 > git commit -m"I made this cool change."
@@ -77,8 +82,8 @@ View the Firebase database at:
 
 https://console.firebase.google.com/project/familyfun-d8dec/database/familyfun-d8dec/data
 
-
 ## Key technologies
+
 - Phaser
 - Firebase
 
@@ -87,11 +92,13 @@ https://github.com/hunttis/phaser-firebase
 
 Built on top of on minimal boilerplate from 22mahmoud: https://github.com/22mahmoud/Phaser.io-v3-Boilerplate
 
+### Code Notes
+
+In the code 'body' refers to the physics body. So its the connectoin to the physics engine for the scene.
+
 ### Want to start your own game with your own database?
 
 Set up your firebase application at http://firebase.google.com
+And create a "Realtime database".
 
-Copy your firebase app configuration to `src/scenes/game.js`
-
-
- 
+Copy your firebase app configuration to the `var firebase_config` at the top of file:`src/scenes/game.js`

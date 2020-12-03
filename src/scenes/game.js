@@ -39,7 +39,7 @@ class Game extends Phaser.Scene {
     this.previousY = 0;
     this.updatePlayerPositions.bind(this.updatePlayerPositions);
     this.getName.bind(this.getName);
-    this.createCharacter.bind(this.createCharacter);
+    this.createPlayer.bind(this.createPlayer);
     this.allPlayers = {};
   }
 
@@ -72,27 +72,20 @@ class Game extends Phaser.Scene {
     this.platforms.create(900, 675, "ground");
 
     // Create Player
-    var newCharacterData = {
+    var playerData = {
       playerName: this.playerName,
       x: 100,
       y: 450,
       isDead: false,
       isImposter: false,
-      playerNumber: Math.random().toString().split(".")[1],
+      id: Math.random().toString().split(".")[1],
     };
     this.player = {};
-    this.player.playerNumber = newCharacterData.playerNumber;
-    console.log("player num1:" + this.player.playerNumber);
+    this.player.id = playerData.id;
 
     this.playerSprite = this.add.sprite(0, 0, "dude");
 
-    this.player = this.createCharacter(
-      newCharacterData,
-      this.playerSprite,
-      true
-    );
-
-    console.log("player num2:" + this.player.playerNumber);
+    this.player = this.createPlayer(playerData, this.playerSprite, true);
 
     this.player.body.setGravityY(300);
 
@@ -117,13 +110,11 @@ class Game extends Phaser.Scene {
       repeat: -1,
     });
 
-    // set collides between Player and grounds
+    // set colliders between Player and grounds
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.player, this.allPlayersGroup);
 
-    var thisPlayerRef = firebase
-      .database()
-      .ref("players/" + this.player.playerNumber);
+    var thisPlayerRef = firebase.database().ref("players/" + this.player.id);
     thisPlayerRef.onDisconnect().set({});
     var playersRef = firebase.database().ref("players");
     playersRef.on("value", (snapshot) => {
@@ -144,204 +135,13 @@ class Game extends Phaser.Scene {
 
     this.input.keyboard.on("keydown_R", function (event) {
       console.log("Hello from the R Key!");
-
-      //RESET GAME
-      var allKeys = Object.keys(that.allPlayers);
-      allKeys.push(that.player.playerNumber);
-
-      console.log(allKeys);
-      allKeys.forEach((id) => {
-        firebase
-          .database()
-          .ref("players/" + id)
-          .update({
-            isDead: false,
-            isImposter: false,
-          });
-      });
-
-      //Set the imposter
-
-      //Get r - a random number between 0 and numplayers-1.
-      var len = allKeys.length;
-      console.log("l:" + len);
-      var r = that.getRandomInt(0, len - 1);
-      console.log("r:" + r);
-
-      var playerNumber = allKeys[r];
-
-      console.log("imposter: pn:" + playerNumber);
-
-      firebase
-        .database()
-        .ref("players/" + playerNumber)
-        .update({
-          isImposter: true,
-        });
+      that.resetGame(that);
     });
 
     this.input.keyboard.on("keydown_K", function (event) {
       console.log("Hello from the K Key!");
-      //console.log(that)
-      //if (this.player){
-
-      console.log("isImp: " + that.player.isImposter);
-      if (that.player.isImposter == false) {
-        console.log("Not imposter, cannot kill");
-      } else {
-        var closest = that.physics.closest(that.player);
-
-        if (closest) {
-          const pNumber = closest.gameObject.playerNumber;
-          console.log("Kill player: " + pNumber);
-          const distance = Phaser.Math.Distance.BetweenPoints(
-            that.player.body.position,
-            closest.position
-          );
-
-          if (distance < 90) {
-            setTimeout(function () {
-              that.killPlayer(pNumber);
-              console.log("Kill!");
-            }, 3000);
-          }
-        } else {
-          console.log("no closest");
-        }
-      } //is imposter
-
-      //}
+      that.killPlayer(that);
     });
-  }
-
-  killPlayer(playerNumber) {
-    firebase
-      .database()
-      .ref("players/" + playerNumber)
-      .update({
-        isDead: true,
-      })
-      .then(function () {
-        //console.log("saved");
-      })
-      .catch(function (error) {
-        //console.log("not saved" + error);
-      });
-  }
-
-  getRandomInt(min, max) {
-    min = Math.ceil(min);
-    max = Math.floor(max);
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-  }
-
-  getName(name, p) {
-    //only show imposter if its the current player.
-    var name2 = name + (p.isDead ? " - DEAD" : "");
-    if (p.playerNumber == this.player.playerNumber) {
-      name2 = name2 + (p.isImposter ? " - IMP" : "");
-    }
-
-    //name2 = name2 + (p.isImposter ? " - IMP": "")
-
-    return name2;
-  }
-
-  updatePlayerDeath(is, incoming) {
-    if (
-      is.playerName != incoming.playerName ||
-      is.isDead != incoming.isDead ||
-      is.isImposter != incoming.isImposter
-    ) {
-      //console.log("RENAME!")
-      var name = this.getName(incoming.playerName, incoming);
-      is.labelRef.setText(name);
-    }
-
-    is.playerName = incoming.playerName;
-    is.isDead = incoming.isDead;
-    is.isImposter = incoming.isImposter;
-  }
-
-  updatePlayerPositions(data) {
-    //Update current player (died?)
-    this.updatePlayerDeath(this.player, data[this.player.playerNumber]);
-
-    //Unregister missing players
-    Object.keys(this.allPlayers).forEach((id) => {
-      if (!data[id]) {
-        this.allPlayers[id].destroy();
-      }
-    });
-
-    //Update each player (but not the current player.).
-
-    Object.keys(data).forEach((id) => {
-      if (this.allPlayers[id] && id != this.player.playerNumber) {
-        // UPDATE Existing CHARACTER
-
-        const incomingData = data[id];
-        const player = this.allPlayers[id];
-
-        //Update all existing players - name and death
-        this.updatePlayerDeath(player, incomingData);
-
-        player.x = incomingData.x;
-        player.y = incomingData.y;
-        player.body.velocity.x = 0;
-        player.body.velocity.y = 0;
-        player.playerNumber = id;
-
-        //console.log(player.spriteRef);
-        player.spriteRef.anims.play(incomingData.animation, true);
-      } else if (!this.allPlayers[id] && id != this.player.playerNumber) {
-        // CREATE New PLAYERS
-        const newCharacterData = data[id];
-
-        var mSprite = this.add.sprite(0, 0, "dude");
-        var newCharacter = this.createCharacter(
-          newCharacterData,
-          mSprite,
-          false
-        );
-        this.physics.add.collider(newCharacter, this.platforms);
-        this.physics.add.collider(this.player, newCharacter);
-        this.allPlayers[id] = newCharacter;
-      } else {
-      }
-    });
-  }
-
-  createCharacter(newCharacterData, mSprite, isCurrentPlayer) {
-    var style;
-    if (isCurrentPlayer) {
-      style = { font: "16px Arial", fill: "#fff" };
-    } else {
-      style = { font: "16px Arial", fill: "#000" };
-    }
-
-    var name = this.getName(newCharacterData.playerName, newCharacterData);
-    var label = this.add.text(0, -30, name, style);
-    label.setOrigin(0.5);
-
-    var newCharacter = this.add.container(
-      newCharacterData.x,
-      newCharacterData.y,
-      [label, mSprite]
-    );
-    newCharacter.spriteRef = mSprite;
-    newCharacter.labelRef = label;
-    newCharacter.isDead = newCharacterData.isDead;
-    newCharacter.isImposter = newCharacterData.isImposter;
-    newCharacter.playerNumber = newCharacterData.playerNumber;
-
-    this.physics.world.enable(newCharacter);
-    newCharacter.body.setBounce(0.2).setCollideWorldBounds(true);
-
-    newCharacter.body.setSize(40, 55, true);
-    newCharacter.setSize(40, 55, true);
-
-    return newCharacter;
   }
 
   //////// update() is a special hook, called by Phaser3 engine. ///////////
@@ -372,9 +172,9 @@ class Game extends Phaser.Scene {
     ) {
       firebase
         .database()
-        .ref("players/" + this.player.playerNumber)
+        .ref("players/" + this.player.id)
         .update({
-          playerNumber: this.player.playerNumber,
+          id: this.player.id,
           playerName: this.playerName,
           x: Math.round(this.player.x),
           y: Math.round(this.player.y),
@@ -385,20 +185,205 @@ class Game extends Phaser.Scene {
     this.previousY = Math.round(this.player.y);
     this.player.previousIsDead = this.player.isDead;
 
-    //DUBGGGINNG
-    var pointer = this.input.activePointer;
-    if (this.player) {
-      var closest = this.physics.closest(this.player);
+    //DUBGGGINNG Closeness - draws a line in the black area.
+    // var pointer = this.input.activePointer;
+    // if (this.player) {
+    //   var closest = this.physics.closest(this.player);
+
+    //   if (closest) {
+    //     gfx
+    //       .clear()
+    //       .lineStyle(2, 0xff3300)
+    //       .lineBetween(closest.x, closest.y, pointer.x, pointer.y);
+    //   }
+    // }
+  }
+
+  // Bring everyone back to life. Set a random player as the imposter.
+  resetGame(that) {
+    //RESET GAME
+    var allKeys = Object.keys(that.allPlayers);
+    allKeys.push(that.player.id);
+
+    console.log(allKeys);
+    allKeys.forEach((id) => {
+      firebase
+        .database()
+        .ref("players/" + id)
+        .update({
+          isDead: false,
+          isImposter: false,
+        });
+    });
+
+    //Set the imposter
+
+    //Get r - a random number between 0 and numplayers-1.
+    var len = allKeys.length;
+    console.log("l:" + len);
+    var r = that.getRandomInt(0, len - 1);
+    console.log("r:" + r);
+
+    var id = allKeys[r];
+
+    console.log("imposter: pn:" + id);
+
+    firebase
+      .database()
+      .ref("players/" + id)
+      .update({
+        isImposter: true,
+      });
+  }
+
+  killPlayer(that) {
+    console.log("isImp: " + that.player.isImposter);
+    if (that.player.isImposter == false) {
+      console.log("Not imposter, cannot kill");
+    } else {
+      var closest = that.physics.closest(that.player);
 
       if (closest) {
-        gfx
-          .clear()
-          .lineStyle(2, 0xff3300)
-          .lineBetween(closest.x, closest.y, pointer.x, pointer.y);
-        // .lineStyle(2, 0x0099ff)
-        // .lineBetween(furthest.x, furthest.y, pointer.x, pointer.y);
+        const pNumber = closest.gameObject.id;
+        console.log("Kill player: " + pNumber);
+        const distance = Phaser.Math.Distance.BetweenPoints(
+          that.player.body.position,
+          closest.position
+        );
+
+        if (distance < 90) {
+          setTimeout(function () {
+            that.killPlayer2(pNumber);
+            console.log("Kill!");
+          }, 3000);
+        }
+      } else {
+        console.log("no closest");
       }
+    } //is imposter
+  }
+
+  killPlayer2(id) {
+    firebase
+      .database()
+      .ref("players/" + id)
+      .update({
+        isDead: true,
+      })
+      .then(function () {
+        //console.log("saved");
+      })
+      .catch(function (error) {
+        //console.log("not saved" + error);
+      });
+  }
+
+  getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  getName(name, p) {
+    //only show imposter if its the current player.
+    var name2 = name + (p.isDead ? " - DEAD" : "");
+    if (p.id == this.player.id) {
+      name2 = name2 + (p.isImposter ? " - IMPOSTER" : "");
     }
+
+    return name2;
+  }
+
+  updatePlayerDeath(is, incoming) {
+    if (
+      is.playerName != incoming.playerName ||
+      is.isDead != incoming.isDead ||
+      is.isImposter != incoming.isImposter
+    ) {
+      //console.log("RENAME!")
+      var name = this.getName(incoming.playerName, incoming);
+      is.labelRef.setText(name);
+    }
+
+    is.playerName = incoming.playerName;
+    is.isDead = incoming.isDead;
+    is.isImposter = incoming.isImposter;
+  }
+
+  updatePlayerPositions(data) {
+    //Update current player (died?)
+    this.updatePlayerDeath(this.player, data[this.player.id]);
+
+    //Unregister missing players
+    Object.keys(this.allPlayers).forEach((id) => {
+      if (!data[id]) {
+        this.allPlayers[id].destroy();
+      }
+    });
+
+    //Update each player (but not the current player.).
+
+    Object.keys(data).forEach((id) => {
+      if (this.allPlayers[id] && id != this.player.id) {
+        // UPDATE Existing CHARACTER
+
+        const incomingData = data[id];
+        const player = this.allPlayers[id];
+
+        //Update all existing players - name and death
+        this.updatePlayerDeath(player, incomingData);
+
+        player.x = incomingData.x;
+        player.y = incomingData.y;
+        player.body.velocity.x = 0;
+        player.body.velocity.y = 0;
+        player.id = id;
+
+        //console.log(player.spriteRef);
+        player.spriteRef.anims.play(incomingData.animation, true);
+      } else if (!this.allPlayers[id] && id != this.player.id) {
+        // CREATE New PLAYERS
+        const playerData = data[id];
+
+        var mSprite = this.add.sprite(0, 0, "dude");
+        var newPlayer = this.createPlayer(playerData, mSprite, false);
+        this.physics.add.collider(newPlayer, this.platforms);
+        this.physics.add.collider(this.player, newPlayer);
+        this.allPlayers[id] = newPlayer;
+      } else {
+      }
+    });
+  }
+
+  createPlayer(playerData, mSprite, isCurrentPlayer) {
+    var style;
+    if (isCurrentPlayer) {
+      style = { font: "16px Arial", fill: "#fff" };
+    } else {
+      style = { font: "16px Arial", fill: "#000" };
+    }
+
+    var name = this.getName(playerData.playerName, playerData);
+    var label = this.add.text(0, -30, name, style);
+    label.setOrigin(0.5);
+
+    var newPlayer = this.add.container(playerData.x, playerData.y, [
+      label,
+      mSprite,
+    ]);
+    newPlayer.spriteRef = mSprite;
+    newPlayer.labelRef = label;
+    newPlayer.isDead = playerData.isDead;
+    newPlayer.isImposter = playerData.isImposter;
+    newPlayer.id = playerData.id;
+
+    this.physics.world.enable(newPlayer);
+    newPlayer.body.setBounce(0.2).setCollideWorldBounds(true);
+
+    newPlayer.body.setSize(40, 55, true);
+    newPlayer.setSize(40, 55, true);
+
+    return newPlayer;
   }
 }
 
