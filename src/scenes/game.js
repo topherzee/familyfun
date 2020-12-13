@@ -13,6 +13,7 @@ import ground from "../assets/rock.png";
 import dude from "../assets/dude-mzimm1.png";
 import persons from "../assets/persons.jpg";
 import block from "../assets/block.png";
+import ball from "../assets/ball-64.png";
 
 import firebase from "firebase/app";
 import "firebase/database";
@@ -34,6 +35,7 @@ var firebase_config = {
 var gfx;
 var platforms = [];
 var blocks = [];
+var balls = [];
 var spaceWasDown = false;
 
 class Game extends Phaser.Scene {
@@ -50,6 +52,9 @@ class Game extends Phaser.Scene {
     this.updatePlayers.bind(this.updatePlayers);
     this.getName.bind(this.getName);
     this.createPlayer.bind(this.createPlayer);
+    this.closestPlayer.bind(this.closestPlayer);
+    this.killPlayer.bind(this.killPlayer);
+    this.killPlayer2.bind(this.killPlayer2);
 
     this.allPlayers = {};
   }
@@ -60,6 +65,7 @@ class Game extends Phaser.Scene {
 
     this.load.image("sky", sky);
     this.load.image("block", block);
+    this.load.image("ball", ball);
     this.load.image("ground", ground);
     this.load.spritesheet("dude", dude, { frameWidth: 32, frameHeight: 48 });
   }
@@ -83,9 +89,11 @@ class Game extends Phaser.Scene {
 
     this.matter.add.worldConstraint(tt, 0, 1, { pointA: { x: 750, y: 220 } });
 
-    this.createBlock(280, 220);
-    this.createBlock(280, 260);
-    this.createBlock(280, 300);
+    // this.createBlock(280, 220);
+    // this.createBlock(280, 260);
+    // this.createBlock(280, 300);
+
+    this.createBall(280, 220);
 
     // this.input.on("pointerdown", function (pointer) {
     //   if (pointer.y > 300) {
@@ -236,7 +244,10 @@ class Game extends Phaser.Scene {
       spaceWasDown = false;
       var intersects = this.matter.intersectBody(this.player.body, blocks);
       if (intersects.length > 0) {
-        this.matter.body.setVelocity(intersects[0], { x: 0, y: -4 });
+        this.matter.body.setVelocity(intersects[0], {
+          x: this.player.body.velocity.x * 2,
+          y: -4,
+        });
       }
     }
 
@@ -291,6 +302,31 @@ class Game extends Phaser.Scene {
     //   },
     // });
     blocks.push(block);
+  }
+
+  createBall(x, y) {
+    console.log("create ball");
+    var ball = this.matter.add
+      .image(x, y, "ball", null, {
+        restitution: 0.4,
+      })
+      .setScale(0.5);
+
+    ball.setBody({
+      type: "circle",
+      radius: 20,
+    });
+
+    // const block = this.matter.add.rectangle(x, y, 40, 40, {
+    //   render: {
+    //     sprite: {
+    //       texture: "ground",
+
+    //       //Is there a 'width:' or 'height' property?
+    //     },
+    //   },
+    // });
+    balls.push(ball);
   }
 
   createPlatform(x, y, isStaticD) {
@@ -389,9 +425,9 @@ class Game extends Phaser.Scene {
 
     //Get r - a random number between 0 and numplayers-1.
     var len = allKeys.length;
-    console.log("l:" + len);
+    //console.log("l:" + len);
     var r = that.getRandomInt(0, len - 1);
-    console.log("r:" + r);
+    //console.log("r:" + r);
 
     var id = allKeys[r];
 
@@ -405,31 +441,26 @@ class Game extends Phaser.Scene {
       });
   }
 
-  killPlayer(that) {
-    console.log("isImp: " + that.player.isImposter);
-    if (that.player.isImposter == false) {
-      console.log("Not imposter, cannot kill");
-    } else {
-      var closest = that.matter.closest(that.player);
+  closestPlayer() {
+    var closest = null;
+    var closestDistance = 10000000;
 
-      if (closest) {
-        const pNumber = closest.gameObject.id;
-        console.log("Kill player: " + pNumber);
+    Object.keys(this.allPlayers).forEach((id) => {
+      console.log("closest id? " + id);
+      if (id != this.player.id) {
         const distance = Phaser.Math.Distance.BetweenPoints(
-          that.player.body.position,
-          closest.position
+          this.player.body.position,
+          this.allPlayers[id].body.position
         );
-
-        if (distance < 90) {
-          setTimeout(function () {
-            that.killPlayer2(pNumber);
-            console.log("Kill!");
-          }, 3000);
+        console.log("dist? " + distance);
+        if (distance < closestDistance) {
+          closest = this.allPlayers[id];
+          closestDistance = distance;
         }
-      } else {
-        console.log("no closest");
       }
-    } //is imposter
+    });
+    console.log("closest:" + closest);
+    return closest;
   }
 
   killPlayer2(id) {
@@ -445,6 +476,35 @@ class Game extends Phaser.Scene {
       .catch(function (error) {
         //console.log("not saved" + error);
       });
+  }
+
+  killPlayer() {
+    console.log("isImp: " + this.player.isImposter);
+    if (this.player.isImposter == false) {
+      console.log("Not imposter, cannot kill");
+    } else {
+      //var closest = that.matter.closest(that.player);
+      var closest = this.closestPlayer();
+
+      if (closest) {
+        //console.log
+        const pNumber = closest.id;
+        console.log("Kill player: " + pNumber);
+        const distance = Phaser.Math.Distance.BetweenPoints(
+          this.player.body.position,
+          closest.body.position
+        );
+        var that = this;
+        if (distance < 90) {
+          setTimeout(function () {
+            that.killPlayer2(pNumber);
+            console.log("Kill!");
+          }, 3000);
+        }
+      } else {
+        console.log("no closest");
+      }
+    } //is imposter
   }
 
   removeAllPlayers(that) {
