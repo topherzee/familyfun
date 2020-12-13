@@ -11,8 +11,11 @@ The first game is based on 'Werewolf/Mafia/Among Us'
 - One player is the "Imposter", they try to kill as many other players without being detected.
 
 - Use arrow keys to move.
+- Use SPACEBAR to pickup and throw blocks.
+
 - Imposter can use the 'k' key to kill. (Killed player shows state after 3 seconds.)
 - Use the 'r' key to reset the game and choose a new Imposter.
+- Use the 't' key to delete all players on firebase.
 
 ## Next steps
 
