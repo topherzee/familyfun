@@ -19,6 +19,13 @@ The first game is based on 'Werewolf/Mafia/Among Us'
 
 ## Next steps
 
+Football game:
+
+- Get the roators synced.
+- Add goals
+- Add score object.
+- Add teams
+
 Imposter game:
 
 - Tidy up code /scenes/game.js

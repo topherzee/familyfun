@@ -84,10 +84,10 @@ class Game extends Phaser.Scene {
     this.createPlatform(400, 550);
     this.createPlatform(600, 400);
     this.createPlatform(50, 250);
-    const tt = this.createPlatform(750, 220, false);
+    const tt = this.createPlatform(600, 220, false);
     this.createPlatform(200, 600);
 
-    this.matter.add.worldConstraint(tt, 0, 1, { pointA: { x: 750, y: 220 } });
+    this.matter.add.worldConstraint(tt, 0, 1, { pointA: { x: 600, y: 220 } });
 
     // this.createBlock(280, 220);
     // this.createBlock(280, 260);
@@ -145,9 +145,17 @@ class Game extends Phaser.Scene {
 
     var thisPlayerRef = firebase.database().ref("players/" + this.player.id);
     thisPlayerRef.onDisconnect().set({});
+
+    //Handle player events from Firebase.
     var playersRef = firebase.database().ref("players");
     playersRef.on("value", (snapshot) => {
       this.updatePlayers(snapshot.val());
+    });
+
+    //Handle object events from Firebase.
+    var objectsRef = firebase.database().ref("objects");
+    objectsRef.on("value", (snapshot) => {
+      this.updateObjects(snapshot.val());
     });
 
     //Handle changing player name with input field.
@@ -177,6 +185,16 @@ class Game extends Phaser.Scene {
       console.log("Hello from the T Key!");
 
       that.removeAllPlayers(that);
+    });
+
+    //Could be better in future: https://github.com/dxu/matter-collision-events
+    this.matter.world.on("collisionactive", function (event, bodyA, bodyB) {
+      that.handleCollisions(event, that, bodyA, bodyB);
+      //bodyA.gameObject.setTint(0xff0000);
+      //bodyB.gameObject.setTint(0x00ff00);
+    });
+    this.matter.world.on("collisionstart", function (event, bodyA, bodyB) {
+      that.handleCollisions(event, that, bodyA, bodyB);
     });
 
     // add some custom config object
@@ -219,7 +237,7 @@ class Game extends Phaser.Scene {
 
       //var intersects = this.matter.intersectBody(this.player.body, platforms);
       var intersects = this.matter.intersectBody(this.player.body);
-      console.log("int:" + intersects.length);
+      //console.log("int:" + intersects.length);
       if (intersects.length > 0) {
         //debugger;
         this.player.setVelocityY(-4);
@@ -230,6 +248,7 @@ class Game extends Phaser.Scene {
     if (this.cursors.space.isDown) {
       spaceWasDown = true;
 
+      //blocks
       var intersects = this.matter.intersectBody(this.player.body, blocks);
       if (intersects.length > 0) {
         this.matter.body.setPosition(intersects[0], {
@@ -237,17 +256,42 @@ class Game extends Phaser.Scene {
           y: this.player.body.position.y - 20,
         });
       }
+
+      //ball
+      var intersects = this.matter.intersectBody(this.player.body, balls[0]);
+      if (intersects.length > 0) {
+        this.matter.body.setPosition(intersects[0], {
+          x: this.player.body.position.x,
+          y: this.player.body.position.y - 20,
+        });
+
+        this.sendBall(balls[0]);
+      }
     }
 
     //throw ball
     if (spaceWasDown && this.cursors.space.isUp) {
       spaceWasDown = false;
+
+      //blocks
       var intersects = this.matter.intersectBody(this.player.body, blocks);
       if (intersects.length > 0) {
         this.matter.body.setVelocity(intersects[0], {
           x: this.player.body.velocity.x * 2,
           y: -4,
         });
+      }
+
+      //ball
+      var intersects = this.matter.intersectBody(this.player.body, balls[0]);
+      if (intersects.length > 0) {
+        const newXVel = this.player.body.velocity.x * 2;
+        const newYVel = -4;
+        this.matter.body.setVelocity(intersects[0], {
+          x: newXVel,
+          y: newYVel,
+        });
+        this.sendBall(balls[0]); //, null, null, newXVel, newYVel);
       }
     }
 
@@ -261,6 +305,9 @@ class Game extends Phaser.Scene {
       this.player.isDead != this.player.previousIsDead
     ) {
       //console.log("write player change to firebase.");
+
+      // Write player to firebase! NOTE.
+
       firebase
         .database()
         .ref("players/" + this.player.id)
@@ -276,6 +323,39 @@ class Game extends Phaser.Scene {
     this.previousX = Math.round(this.player.x);
     this.previousY = Math.round(this.player.y);
     this.player.previousIsDead = this.player.isDead;
+  }
+
+  handleCollisions(event, that, bodyA, bodyB) {
+    if (that.player) {
+      //console.log("c!");
+      if (bodyA == that.player.body || bodyB == that.player.body) {
+        //console.log("collide!");
+
+        const collidedBody = bodyA == that.player.body ? bodyB : bodyA;
+        const ball = balls[0];
+        if (collidedBody == ball.body) {
+          console.log("collide ball!");
+
+          that.sendBall(ball);
+        }
+      }
+    }
+  }
+
+  sendBall(ball, newX, newY, newXVel, newYVel) {
+    console.log("sendBall");
+    firebase
+      .database()
+      .ref("objects/" + ball.id)
+      .update({
+        id: ball.id,
+
+        x: Math.round(newX || ball.x),
+        y: Math.round(newY || ball.y),
+        angle: Math.round(ball.angle),
+        xVel: newXVel || ball.body.velocity.x,
+        yVel: newYVel || ball.body.velocity.y,
+      });
   }
 
   createBlock(x, y) {
@@ -316,6 +396,8 @@ class Game extends Phaser.Scene {
       type: "circle",
       radius: 20,
     });
+
+    ball.id = 2;
 
     // const block = this.matter.add.rectangle(x, y, 40, 40, {
     //   render: {
@@ -439,6 +521,14 @@ class Game extends Phaser.Scene {
       .update({
         isImposter: true,
       });
+
+    const ball = balls[0];
+    ball.x = 280;
+    ball.y = 220;
+    ball.body.velocity.x = 0;
+    ball.body.velocity.y = 0;
+
+    that.sendBall(ball);
   }
 
   closestPlayer() {
@@ -545,6 +635,33 @@ class Game extends Phaser.Scene {
     is.playerName = incoming.playerName;
     is.isDead = incoming.isDead;
     is.isImposter = incoming.isImposter;
+  }
+
+  updateObjects(data) {
+    console.log("updateObjects");
+    if (!data) return;
+
+    //Update each ojbect
+    const ball = balls[0];
+
+    Object.keys(data).forEach((id) => {
+      //ball
+      if (id == ball.id) {
+        const incomingData = data[id];
+
+        ball.x = incomingData.x;
+        ball.y = incomingData.y;
+        ball.angle = incomingData.angle;
+        // ball.body.velocity.x = incomingData.xVel;
+        // ball.body.velocity.y = incomingData.yVel;
+        this.matter.body.setVelocity(ball.body, {
+          x: incomingData.xVel,
+          y: incomingData.yVel,
+        });
+
+        //console.log("ball yvel:" + balls[0].body.velocity.y);
+      }
+    });
   }
 
   updatePlayers(data) {
