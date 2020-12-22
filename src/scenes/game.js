@@ -239,7 +239,7 @@ class Game extends Phaser.Scene {
       // }
 
       //var intersects = this.matter.intersectBody(this.player.body, platforms);
-      var intersects = this.matter.intersectBody(this.player.body);
+      var intersects = this.matter.intersectBody(this.player.jumpSensor);
       //console.log("int:" + intersects.length);
       if (intersects.length > 0) {
         //debugger;

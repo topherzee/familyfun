@@ -6,6 +6,9 @@ The local player must be always taken into account as well.
 
 const IS_MULTIPLAYER = true;
 const IS_IMPOSTER = false;
+
+const NAME_ELEMENT_ID = "playerName";
+
 //import Phaser from "phaser";
 
 // import sky from "../assets/sky.png";
@@ -91,23 +94,29 @@ class Game extends Phaser.Scene {
     this.add.image(400, 300, "sky");
 
     // Create ground platforms
+    this.createPlatform(400, 200);
 
-    this.createPlatform(400, 550);
-    this.createPlatform(600, 400);
-    this.createPlatform(50, 250);
-    const tt = this.createPlatform(600, 220, false);
-    this.createPlatform(200, 600);
+    this.createPlatform(50, 350);
+    this.createPlatform(750, 350);
 
-    this.matter.add.worldConstraint(tt, 0, 1, { pointA: { x: 600, y: 220 } });
+    this.createPlatform(400, 500);
+
+    // this.createPlatform(600, 400);
+
+    // this.createPlatform(200, 600);
+
+    //const tt = this.createPlatform(600, 220, false);
+    //this.matter.add.worldConstraint(tt, 0, 1, { pointA: { x: 600, y: 220 } });
 
     // this.createBlock(280, 220);
     // this.createBlock(280, 260);
     // this.createBlock(280, 300);
 
-    this.createBall(10, 400);
+    this.createBall(0, 0);
+    this.basketBallNextPoint();
 
-    goal1 = this.createHoop(0, 500, COLOR_1);
-    goal2 = this.createHoop(600, 100, COLOR_2);
+    goal1 = this.createHoop(75, 500, COLOR_1);
+    goal2 = this.createHoop(625, 500, COLOR_2);
 
     // this.input.on("pointerdown", function (pointer) {
     //   if (pointer.y > 300) {
@@ -122,7 +131,7 @@ class Game extends Phaser.Scene {
     // // Create Player
     var playerData = {
       playerName: this.playerName,
-      x: 100,
+      x: 800 / 2,
       y: 450,
       isDead: false,
       isImposter: false,
@@ -174,39 +183,62 @@ class Game extends Phaser.Scene {
     });
 
     //Handle changing player name with input field.
-    const elName = "playerName";
-    const el = document.getElementById(elName);
 
-    el.onchange = (event) => {
+    const elName = document.getElementById(NAME_ELEMENT_ID);
+
+    const nameFromCookie = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("username"))
+      .split("=")[1];
+
+    elName.oninput = (event) => {
       this.playerName = event.target.value;
       const name = this.getName(this.playerName, this.player);
       this.player.labelRef.setText(name);
+
+      document.cookie = "username=" + event.target.value;
     };
+
+    if (nameFromCookie) {
+      elName.value = nameFromCookie;
+
+      this.playerName = nameFromCookie;
+      const name = this.getName(this.playerName, this.player);
+      this.player.labelRef.setText(name);
+    }
 
     var that = this;
 
     this.input.keyboard.on("keydown_R", function (event) {
-      console.log("Hello from the R Key!");
-      that.resetGame(that);
+      if (that.keyboardOK(event)) {
+        console.log("Hello from the R Key!");
+        that.resetGame(that);
+      }
     });
 
     if (IS_IMPOSTER) {
       this.input.keyboard.on("keydown_K", function (event) {
-        console.log("Hello from the K Key!");
+        if (that.keyboardOK(event)) {
+          console.log("Hello from the K Key!");
 
-        that.killPlayer(that);
+          that.killPlayer(that);
+        }
       });
     }
     this.input.keyboard.on("keydown_T", function (event) {
-      console.log("Hello from the T Key!");
+      if (that.keyboardOK(event)) {
+        console.log("Hello from the T Key!");
 
-      that.removeAllPlayers(that);
+        that.removeAllPlayers(that);
+      }
     });
 
     this.input.keyboard.on("keydown_Q", function (event) {
-      console.log("Hello from the Q Key!");
+      if (that.keyboardOK(event)) {
+        console.log("Hello from the Q Key!");
 
-      that.changeTeam(that);
+        that.changeTeam(that);
+      }
     });
 
     //Could be better in future: https://github.com/dxu/matter-collision-events
@@ -260,9 +292,9 @@ class Game extends Phaser.Scene {
       // }
 
       //var intersects = this.matter.intersectBody(this.player.body, platforms);
-      var intersects = this.matter.intersectBody(this.player.body);
-      //console.log("int:" + intersects.length);
-      if (intersects.length > 0) {
+      var intersects = this.matter.intersectBody(this.player.jumpSensor);
+      console.log("int:" + intersects.length);
+      if (intersects.length > 1) {
         //debugger;
         this.player.setVelocityY(-4);
       }
@@ -360,6 +392,11 @@ class Game extends Phaser.Scene {
     this.player.previousTeam = this.player.team;
   }
 
+  keyboardOK(event) {
+    const elName = document.getElementById(NAME_ELEMENT_ID);
+    return elName != document.activeElement;
+  }
+
   handleCollisions(event, that, bodyA, bodyB) {
     if (that.player) {
       //console.log("c!");
@@ -404,8 +441,10 @@ class Game extends Phaser.Scene {
     console.log("basketBallNextPoint:");
 
     balls[0].x = 800 / 2;
-    balls[0].y = 100;
+    balls[0].y = 300;
     this.matter.body.setStatic(balls[0].body, false);
+
+    this.sendBall(balls[0]);
   }
 
   sendBall(ball, newX, newY, newXVel, newYVel) {
@@ -427,7 +466,7 @@ class Game extends Phaser.Scene {
   createHoop(x, y, color) {
     console.log("create hoop");
 
-    const WIDTH = 200;
+    const WIDTH = 100;
     var r1 = this.add.rectangle(x, y, 10, 60, color);
     r1.setStrokeStyle(4, color);
     this.matter.add.gameObject(r1, {
@@ -557,17 +596,47 @@ class Game extends Phaser.Scene {
       mSprite,
     ]);
 
-    //var newPlayer = mSprite;
+    // var newPlayer = this.matter.add.gameObject(group, {
+    //   shape: { type: "polygon", sides: 4, radius: 30 },
+    // });
+    var newPlayer = this.matter.add.gameObject(group, {
+      render: { gameObject: { xOffset: 0, yOffset: 100 } },
+    });
 
-    var newPlayer = this.matter.add
-      .gameObject(group, {
-        shape: { type: "polygon", sides: 4, radius: 30 },
-      })
+    newPlayer
       .setFrictionAir(0.01)
       .setFriction(0.9)
       .setFrictionStatic(0)
       .setBounce(0.0)
       .setFixedRotation();
+    //player = this.matter.add.image(0, 0, 'block');
+
+    //var newPlayer = mSprite;
+    var Bodies = Phaser.Physics.Matter.Matter.Bodies;
+    var rect = Bodies.rectangle(0, 0, 40, 40);
+    var jumpSensor = Bodies.rectangle(0, 30, 38, 10, {
+      isSensor: true,
+      label: "jump-sensor",
+    });
+    //hack to get the vertical offset of the body right
+    var headSensor = Bodies.rectangle(0, -55, 38, 10, {
+      isSensor: true,
+      label: "head-sensor",
+    });
+
+    var compoundBody = Phaser.Physics.Matter.Matter.Body.create({
+      parts: [rect, jumpSensor, headSensor],
+      inertia: Infinity,
+    });
+
+    newPlayer.setExistingBody(compoundBody);
+    //newPlayer.setPosition(400, 300);
+    //newPlayer.body.setOffset(0, -200);
+
+    //   var triangle = this.matter.add.sprite(400, 100, 'triangle', null, {
+    //     shape: { type: 'fromVerts', verts: shapes.triangle },
+    //     render: { sprite: { xOffset: 0.30, yOffset: 0.15 } }
+    // });
 
     newPlayer.spriteRef = mSprite;
     newPlayer.labelRef = label;
@@ -575,6 +644,7 @@ class Game extends Phaser.Scene {
     newPlayer.isImposter = playerData.isImposter;
     newPlayer.team = playerData.team;
     newPlayer.id = playerData.id;
+    newPlayer.jumpSensor = jumpSensor;
 
     return newPlayer;
   }
