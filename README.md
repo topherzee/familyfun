@@ -2,6 +2,15 @@
 
 A simple networked multiplayer game.
 
+## Developing
+
+`live-server --open=src/nobuild.html`
+
+Currentluy not using npm bulid because it was slow and annoying.
+Just importing libraries directly.
+
+## more info about game
+
 Play game at: https://topherzee.github.io/familyfun/dist/
 
 The goal is to have a collection of easy to learn mini-games that family can play while video chatting on ZOOM.
