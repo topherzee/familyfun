@@ -5,19 +5,22 @@ The local player must be always taken into account as well.
 */
 
 const IS_MULTIPLAYER = true;
+const IS_IMPOSTER = false;
 
-import Phaser from "phaser";
+const NAME_ELEMENT_ID = "playerName";
 
-import sky from "../assets/sky.png";
-import ground from "../assets/rock.png";
-import dude from "../assets/dude-mzimm1.png";
-import persons from "../assets/persons.jpg";
-import block from "../assets/block.png";
-import ball from "../assets/ball-64.png";
+//import Phaser from "phaser";
 
-import firebase from "firebase/app";
-import "firebase/database";
-import _ from "lodash";
+// import sky from "../assets/sky.png";
+// import ground from "../assets/rock.png";
+// import dude from "../assets/dude-mzimm1.png";
+// import persons from "../assets/persons.jpg";
+// import block from "../assets/block.png";
+// import ball from "../assets/ball-64.png";
+
+// import firebase from "firebase/app";
+// import "firebase/database";
+//import _ from "lodash";
 
 //Firebase config
 var firebase_config = {
@@ -37,6 +40,18 @@ var platforms = [];
 var blocks = [];
 var balls = [];
 var spaceWasDown = false;
+var goal1;
+var goal2;
+
+var buttonLeft = { isPressed: false };
+var buttonRight = { isPressed: false };
+var buttonUp = { isPressed: false };
+var buttonThrow = { isPressed: false };
+
+const COLOR_1 = 0xff0000;
+const COLOR_2 = 0x6666ff;
+const COLOR_1_HEX = "#ff0000";
+const COLOR_2_HEX = "#6666ff";
 
 class Game extends Phaser.Scene {
   constructor() {
@@ -55,24 +70,31 @@ class Game extends Phaser.Scene {
     this.closestPlayer.bind(this.closestPlayer);
     this.killPlayer.bind(this.killPlayer);
     this.killPlayer2.bind(this.killPlayer2);
+    this.handleGoal.bind(this.handleGoal);
 
     this.allPlayers = {};
   }
   preload() {
     console.log("preload");
 
-    this.load.image("platform", ground);
+    this.load.image("platform", "/src/assets/rock.png");
 
-    this.load.image("sky", sky);
-    this.load.image("block", block);
-    this.load.image("ball", ball);
-    this.load.image("ground", ground);
-    this.load.spritesheet("dude", dude, { frameWidth: 32, frameHeight: 48 });
+    this.load.image("sky", "/src/assets/sky.png");
+    this.load.image("block", "/src/assets/block.png");
+    this.load.image("ball", "/src/assets/ball-64.png");
+    this.load.image("ground", "/src/assets/rock.png");
+    this.load.spritesheet("dude", "/src/assets/dude-mzimm1.png", {
+      frameWidth: 32,
+      frameHeight: 48,
+    });
   }
 
   create() {
     console.log("create");
     gfx = this.add.graphics();
+
+    //enable multitouch.
+    this.input.addPointer(3);
 
     this.matter.world.setBounds();
 
@@ -80,23 +102,29 @@ class Game extends Phaser.Scene {
     this.add.image(400, 300, "sky");
 
     // Create ground platforms
+    this.createPlatform(400, 200);
 
-    this.createPlatform(400, 550);
-    this.createPlatform(600, 400);
-    this.createPlatform(50, 250);
-    const tt = this.createPlatform(600, 220, false);
-    this.createPlatform(200, 600);
+    this.createPlatform(50, 350);
+    this.createPlatform(750, 350);
 
-    this.matter.add.worldConstraint(tt, 0, 1, { pointA: { x: 600, y: 220 } });
+    this.createPlatform(400, 490);
+
+    // this.createPlatform(600, 400);
+
+    // this.createPlatform(200, 600);
+
+    //const tt = this.createPlatform(600, 220, false);
+    //this.matter.add.worldConstraint(tt, 0, 1, { pointA: { x: 600, y: 220 } });
 
     // this.createBlock(280, 220);
     // this.createBlock(280, 260);
     // this.createBlock(280, 300);
 
-    this.createBall(280, 220);
+    this.createBall(0, 0);
+    this.basketBallNextPoint();
 
-    this.createHoop(100, 100);
-    this.createHoop(600, 100);
+    goal1 = this.createHoop(75, 500, COLOR_1);
+    goal2 = this.createHoop(625, 500, COLOR_2);
 
     // this.input.on("pointerdown", function (pointer) {
     //   if (pointer.y > 300) {
@@ -111,10 +139,11 @@ class Game extends Phaser.Scene {
     // // Create Player
     var playerData = {
       playerName: this.playerName,
-      x: 100,
+      x: 800 / 2,
       y: 450,
       isDead: false,
       isImposter: false,
+      team: 1,
       id: Math.random().toString().split(".")[1],
     };
     this.player = {};
@@ -162,36 +191,71 @@ class Game extends Phaser.Scene {
     });
 
     //Handle changing player name with input field.
-    const elName = "playerName";
-    const el = document.getElementById(elName);
 
-    el.onchange = (event) => {
+    const elName = document.getElementById(NAME_ELEMENT_ID);
+
+    var nameFromCookie = "";
+    if (document.cookie) {
+      document.cookie
+        .split("; ")
+        .find((row) => row.startsWith("username"))
+        .split("=")[1];
+    }
+
+    elName.oninput = (event) => {
       this.playerName = event.target.value;
       const name = this.getName(this.playerName, this.player);
       this.player.labelRef.setText(name);
+
+      document.cookie = "username=" + event.target.value;
     };
+
+    if (nameFromCookie) {
+      elName.value = nameFromCookie;
+
+      this.playerName = nameFromCookie;
+      const name = this.getName(this.playerName, this.player);
+      this.player.labelRef.setText(name);
+    }
 
     var that = this;
 
     this.input.keyboard.on("keydown_R", function (event) {
-      console.log("Hello from the R Key!");
-      that.resetGame(that);
+      if (that.keyboardOK(event)) {
+        console.log("Hello from the R Key!");
+        that.resetGame(that);
+      }
     });
 
-    this.input.keyboard.on("keydown_K", function (event) {
-      console.log("Hello from the K Key!");
+    if (IS_IMPOSTER) {
+      this.input.keyboard.on("keydown_K", function (event) {
+        if (that.keyboardOK(event)) {
+          console.log("Hello from the K Key!");
 
-      that.killPlayer(that);
-    });
-
+          that.killPlayer(that);
+        }
+      });
+    }
     this.input.keyboard.on("keydown_T", function (event) {
-      console.log("Hello from the T Key!");
+      if (that.keyboardOK(event)) {
+        console.log("Hello from the T Key!");
 
-      that.removeAllPlayers(that);
+        that.removeAllPlayers(that);
+      }
+    });
+
+    this.input.keyboard.on("keydown_Q", function (event) {
+      if (that.keyboardOK(event)) {
+        console.log("Hello from the Q Key!");
+
+        that.changeTeam(that);
+      }
     });
 
     //Could be better in future: https://github.com/dxu/matter-collision-events
     this.matter.world.on("collisionactive", function (event, bodyA, bodyB) {
+      //that.checkForScoreCollision(event, that);
+
       that.handleCollisions(event, that, bodyA, bodyB);
       //bodyA.gameObject.setTint(0xff0000);
       //bodyB.gameObject.setTint(0x00ff00);
@@ -200,25 +264,63 @@ class Game extends Phaser.Scene {
       that.handleCollisions(event, that, bodyA, bodyB);
     });
 
-    // add some custom config object
-    // first index is Phaser.Scene, second is config object
-    // PhaserGUIAction(this, {
-    //   alpha: 0.6, // 0.0 ~ 1.0 (any value, you can change it in GUI)
-    //   right: 100, // any value
-    //   top: 50, // any value
-    //   side: true, // boolean (default is true)
-    // });
+    //virtual buttons
+    //touch events.
+    const BUTTON_ALPHA = 0.2;
+    buttonRight = this.add
+      .circle(700, 500, 80, 0x000099)
+      .setAlpha(BUTTON_ALPHA)
+      .setInteractive();
+    buttonRight.id = "right";
+    buttonRight.isPressed = false;
+
+    buttonLeft = this.add
+      .circle(500, 500, 80, 0x000099)
+      .setAlpha(BUTTON_ALPHA)
+      .setInteractive();
+    buttonLeft.id = "left";
+    buttonLeft.isPressed = false;
+
+    buttonUp = this.add
+      .circle(600, 300, 80, 0x000099)
+      .setAlpha(BUTTON_ALPHA)
+      .setInteractive();
+    buttonUp.id = "up";
+    buttonUp.isPressed = false;
+
+    buttonThrow = this.add
+      .circle(100, 500, 80, 0x000099)
+      .setAlpha(BUTTON_ALPHA)
+      .setInteractive();
+    buttonThrow.id = "up";
+    buttonThrow.isPressed = false;
+
+    this.input.on("gameobjectdown", function (pointer, gameObject) {
+      //console.log(gameObject);
+      console.log(gameObject.id);
+      gameObject.setFillStyle(0x0000ff);
+      gameObject.isPressed = true;
+    });
+
+    this.input.on("gameobjectup", function (pointer, gameObject) {
+      gameObject.setFillStyle(0x000099);
+      gameObject.isPressed = false;
+    });
   }
 
   //////// update() is a special hook, called by Phaser3 engine. ///////////
 
   update() {
+    //console.log("left:" + (cursorLeftButton && cursorLeftButton.isPressed));
+    //console.log("right:" + (cursorRightButton && cursorRightButton.isPressed));
+
     // Create movement controller
     this.cursors = this.input.keyboard.createCursorKeys();
-    if (this.cursors.left.isDown) {
+
+    if (this.cursors.left.isDown || buttonLeft.isPressed) {
       this.player.setVelocityX(-2);
       this.playerSprite.anims.play("left", true);
-    } else if (this.cursors.right.isDown) {
+    } else if (this.cursors.right.isDown || buttonRight.isPressed) {
       this.player.setVelocityX(2);
       this.playerSprite.anims.play("right", true);
     } else {
@@ -226,54 +328,104 @@ class Game extends Phaser.Scene {
       this.playerSprite.anims.play("turn");
     }
 
-    // if (this.cursors.up.isDown && this.player.body.touching.down) {
-    //CHECK for on the ground.
     //jump
-    if (this.cursors.up.isDown) {
-      //console.log("v:" + this.player.body.velocity.y);
-      //   debugger;
-
-      //Hack that does not work.
-      // if (Math.abs(this.player.body.velocity.y) < 0.01) {
-      //   this.player.setVelocityY(-4);
-      // }
-
-      //var intersects = this.matter.intersectBody(this.player.body, platforms);
-      var intersects = this.matter.intersectBody(this.player.jumpSensor);
-      //console.log("int:" + intersects.length);
-      if (intersects.length > 0) {
-        //debugger;
-        this.player.setVelocityY(-4);
-      }
+    if (this.cursors.up.isDown || buttonUp.isPressed) {
+      this.actionUp();
     }
 
     //pick up ball
-    if (this.cursors.space.isDown) {
-      spaceWasDown = true;
-
-      //blocks
-      var intersects = this.matter.intersectBody(this.player.body, blocks);
-      if (intersects.length > 0) {
-        this.matter.body.setPosition(intersects[0], {
-          x: this.player.body.position.x,
-          y: this.player.body.position.y - 20,
-        });
-      }
-
-      //ball
-      var intersects = this.matter.intersectBody(this.player.body, balls[0]);
-      if (intersects.length > 0) {
-        this.matter.body.setPosition(intersects[0], {
-          x: this.player.body.position.x,
-          y: this.player.body.position.y - 20,
-        });
-
-        this.sendBall(balls[0]);
-      }
+    if (this.cursors.space.isDown || buttonThrow.isPressed) {
+      this.actionGrab();
     }
 
     //throw ball
-    if (spaceWasDown && this.cursors.space.isUp) {
+    if (this.cursors.space.isUp || buttonThrow.isPressed) {
+      this.actionThrow();
+    }
+
+    // if (action == "left") {
+    //   that.actionLeft();
+    // } else if (action == "right") {
+    //   that.actionRight();
+    // }
+
+    //Send info to Firebase and the other players.
+    //If there is a change...
+
+    const THRESHOLD = 0.2;
+    const dx = Math.abs(this.player.x - this.previousX);
+    const dy = Math.abs(this.player.y - this.previousY);
+    //console.log("dx:" + dx + " dy:" + dy);
+
+    if (
+      dx > THRESHOLD ||
+      dy > THRESHOLD ||
+      this.player.isDead != this.player.previousIsDead ||
+      this.player.team != this.player.previousTeam
+    ) {
+      //console.log("write player change to firebase.");
+
+      // Write player to firebase! NOTE. Send info
+      //console.log("send animation:" + this.playerSprite.anims.currentAnim.key);
+      firebase
+        .database()
+        .ref("players/" + this.player.id)
+        .update({
+          id: this.player.id,
+          team: this.player.team,
+          playerName: this.playerName,
+          x: this.player.x,
+          y: this.player.y,
+          xVel: this.player.body.velocity.x,
+          yVel: this.player.body.velocity.y,
+          angle: Math.round(this.player.angle),
+          animation: this.playerSprite.anims.currentAnim.key,
+        });
+    }
+    //this.previousX = Math.round(this.player.x);
+    //this.previousY = Math.round(this.player.y);
+    this.previousX = this.player.x;
+    this.previousY = this.player.y;
+    this.player.previousIsDead = this.player.isDead;
+    this.player.previousTeam = this.player.team;
+  }
+
+  actionLeft(that) {}
+  actionRight(that) {}
+  actionUp() {
+    var intersects = this.matter.intersectBody(this.player.jumpSensor);
+    console.log("int:" + intersects.length);
+    if (intersects.length > 1) {
+      //debugger;
+      this.player.setVelocityY(-7);
+    }
+  }
+
+  actionGrab() {
+    spaceWasDown = true;
+
+    //blocks
+    var intersects = this.matter.intersectBody(this.player.body, blocks);
+    if (intersects.length > 0) {
+      this.matter.body.setPosition(intersects[0], {
+        x: this.player.body.position.x,
+        y: this.player.body.position.y - 20,
+      });
+    }
+
+    //ball
+    var intersects = this.matter.intersectBody(this.player.body, balls[0]);
+    if (intersects.length > 0) {
+      this.matter.body.setPosition(intersects[0], {
+        x: this.player.body.position.x,
+        y: this.player.body.position.y - 20,
+      });
+
+      this.sendBall(balls[0]);
+    }
+  }
+  actionThrow() {
+    if (spaceWasDown) {
       spaceWasDown = false;
 
       //blocks
@@ -281,7 +433,7 @@ class Game extends Phaser.Scene {
       if (intersects.length > 0) {
         this.matter.body.setVelocity(intersects[0], {
           x: this.player.body.velocity.x * 2,
-          y: -4,
+          y: -8,
         });
       }
 
@@ -289,7 +441,7 @@ class Game extends Phaser.Scene {
       var intersects = this.matter.intersectBody(this.player.body, balls[0]);
       if (intersects.length > 0) {
         const newXVel = this.player.body.velocity.x * 2;
-        const newYVel = -4;
+        const newYVel = -8;
         this.matter.body.setVelocity(intersects[0], {
           x: newXVel,
           y: newYVel,
@@ -297,35 +449,11 @@ class Game extends Phaser.Scene {
         this.sendBall(balls[0]); //, null, null, newXVel, newYVel);
       }
     }
+  }
 
-    //Send info to Firebase and the other players.
-    //If there is a change...
-
-    const THRESHOLD = 0.2;
-    if (
-      Math.abs(this.player.x - this.previousX) > THRESHOLD ||
-      Math.abs(this.player.y - this.previousY) > THRESHOLD ||
-      this.player.isDead != this.player.previousIsDead
-    ) {
-      //console.log("write player change to firebase.");
-
-      // Write player to firebase! NOTE.
-
-      firebase
-        .database()
-        .ref("players/" + this.player.id)
-        .update({
-          id: this.player.id,
-          playerName: this.playerName,
-          x: Math.round(this.player.x),
-          y: Math.round(this.player.y),
-          angle: Math.round(this.player.angle),
-          animation: this.playerSprite.anims.currentAnim.key,
-        });
-    }
-    this.previousX = Math.round(this.player.x);
-    this.previousY = Math.round(this.player.y);
-    this.player.previousIsDead = this.player.isDead;
+  keyboardOK(event) {
+    const elName = document.getElementById(NAME_ELEMENT_ID);
+    return elName != document.activeElement;
   }
 
   handleCollisions(event, that, bodyA, bodyB) {
@@ -337,12 +465,45 @@ class Game extends Phaser.Scene {
         const collidedBody = bodyA == that.player.body ? bodyB : bodyA;
         const ball = balls[0];
         if (collidedBody == ball.body) {
-          console.log("collide ball!");
-
+          //console.log("collide ball!");
           that.sendBall(ball);
         }
       }
     }
+  }
+
+  checkBallForScore(c, that) {
+    const ball = balls[0];
+
+    if (c.bodyA == ball.body || c.bodyB == ball.body) {
+      console.log("ball collision");
+      const collidedBody = c.bodyA == ball.body ? c.bodyB : c.bodyA;
+      if (collidedBody == goal1.body) {
+        //console.log("goal 1");
+        that.handleGoal(1, goal1);
+      }
+      if (collidedBody == goal2.body) {
+        //console.log("goal 2");
+        that.handleGoal(2, goal2);
+      }
+    }
+  }
+
+  handleGoal(id, goal) {
+    console.log("handleGoal:" + id);
+
+    balls[0].x = goal.x;
+    balls[0].y = goal.y - 80;
+    this.matter.body.setStatic(balls[0].body, true);
+  }
+  basketBallNextPoint() {
+    console.log("basketBallNextPoint:");
+
+    balls[0].x = 800 / 2;
+    balls[0].y = 300;
+    this.matter.body.setStatic(balls[0].body, false);
+
+    this.sendBall(balls[0]);
   }
 
   sendBall(ball, newX, newY, newXVel, newYVel) {
@@ -361,25 +522,46 @@ class Game extends Phaser.Scene {
       });
   }
 
-  createHoop(x, y) {
+  createHoop(x, y, color) {
     console.log("create hoop");
 
-    var r1 = this.add.rectangle(100, 100, 120, 160, 0x9966ff);
-    r1.setStrokeStyle(4, 0xefc53f);
+    const WIDTH = 100;
+    var r1 = this.add.rectangle(x, y, 10, 60, color);
+    r1.setStrokeStyle(4, color);
+    this.matter.add.gameObject(r1, {
+      isStatic: true,
+    });
+    r1.setFriction(0.0);
 
-    //this.matter.add.gameObject(r1);
-    //this.matter.add.gameObject(r1, { shape: { type: 'fromVerts', verts: arrow, flagInternal: true } });
+    var r2 = this.add.rectangle(x + WIDTH, y, 10, 60, color);
+    r2.setStrokeStyle(4, color);
+    this.matter.add.gameObject(r2, {
+      isStatic: true,
+    });
+    r2.setFriction(0.0);
 
-    // const hoopSide1 = this.matter.add.rectangle(x, y, 10, 60, {
-    //   restitution: 0.4,
-    // });
-    // const hoopSide2 = this.matter.add.rectangle(x + 100, y, 10, 60, {
-    //   restitution: 0.4,
-    // });
+    var r3 = this.add.rectangle(x + WIDTH / 2, y + 30, WIDTH, 10, color);
+    r3.setStrokeStyle(4, color);
+    this.matter.add.gameObject(r3, {
+      isStatic: true,
+    });
 
-    // const hoopScore = this.matter.add.rectangle(x, y + 50, 60, 10, {
-    //   restitution: 0.4,
-    // });
+    var rGoal = this.add.rectangle(x + WIDTH / 2, y + 20, WIDTH, 10, 0xff99ff);
+
+    var goal = this.matter.add.gameObject(rGoal, {
+      isStatic: true,
+    });
+    rGoal.id = "goalo";
+    return rGoal;
+
+    // var Bodies = Phaser.Physics.Matter.Matter.Bodies;
+    // var hoopSensor = Bodies.circle(-70, 0, 24, { isSensor: true, label: 'hoop-goal' });
+
+    // var rect = Bodies.rectangle(x + WIDTH / 2, y + 20, WIDTH, 10);
+
+    // var compoundBody = Phaser.Physics.Matter.Matter.Body.create({
+    //   parts: [ rect, hoopSensor ],
+    //   inertia: Infinity
   }
 
   createBlock(x, y) {
@@ -423,15 +605,10 @@ class Game extends Phaser.Scene {
 
     ball.id = 2;
 
-    // const block = this.matter.add.rectangle(x, y, 40, 40, {
-    //   render: {
-    //     sprite: {
-    //       texture: "ground",
-
-    //       //Is there a 'width:' or 'height' property?
-    //     },
-    //   },
-    // });
+    var that = this;
+    ball.setOnCollide(function (pair) {
+      that.checkBallForScore(pair, that);
+    });
     balls.push(ball);
   }
 
@@ -479,33 +656,71 @@ class Game extends Phaser.Scene {
       label,
       mSprite,
     ]);
-    //var newPlayer = mSprite;
 
-    var newPlayer = this.matter.add
-      .gameObject(group, {
-        shape: { type: "polygon", sides: 4, radius: 30 },
-      })
+    // var newPlayer = this.matter.add.gameObject(group, {
+    //   shape: { type: "polygon", sides: 4, radius: 30 },
+    // });
+    var newPlayer = this.matter.add.gameObject(group, {
+      render: { gameObject: { xOffset: 0, yOffset: 100 } },
+    });
+
+    newPlayer
       .setFrictionAir(0.01)
-      .setFriction(0.9)
-      .setFrictionStatic(0)
-      .setBounce(0.5)
+      .setFriction(0.0)
+      // .setFrictionStatic(0)
+      .setBounce(0.0)
       .setFixedRotation();
+    //player = this.matter.add.image(0, 0, 'block');
+
+    //var newPlayer = mSprite;
+    var Bodies = Phaser.Physics.Matter.Matter.Bodies;
+    var rect = Bodies.rectangle(0, 0, 40, 40);
+    var jumpSensor = Bodies.rectangle(0, 30, 38, 10, {
+      isSensor: true,
+      label: "jump-sensor",
+    });
+    //hack to get the vertical offset of the body right
+    var headSensor = Bodies.rectangle(0, -55, 38, 10, {
+      isSensor: true,
+      label: "head-sensor",
+    });
+
+    var compoundBody = Phaser.Physics.Matter.Matter.Body.create({
+      parts: [rect, jumpSensor, headSensor],
+      inertia: Infinity,
+    });
+
+    newPlayer.setExistingBody(compoundBody);
+    //newPlayer.setPosition(400, 300);
+    //newPlayer.body.setOffset(0, -200);
+
+    //   var triangle = this.matter.add.sprite(400, 100, 'triangle', null, {
+    //     shape: { type: 'fromVerts', verts: shapes.triangle },
+    //     render: { sprite: { xOffset: 0.30, yOffset: 0.15 } }
+    // });
 
     newPlayer.spriteRef = mSprite;
     newPlayer.labelRef = label;
     newPlayer.isDead = playerData.isDead;
     newPlayer.isImposter = playerData.isImposter;
+    newPlayer.team = playerData.team;
     newPlayer.id = playerData.id;
+    newPlayer.jumpSensor = jumpSensor;
 
     return newPlayer;
   }
 
   getName(name, p) {
-    //only show imposter if its the current player.
-    var name2 = name + (p.isDead ? " - DEAD" : "");
-    if (p.id == this.player.id) {
-      name2 = name2 + (p.isImposter ? " - IMPOSTER" : "");
+    var name2 = name;
+
+    if (IS_IMPOSTER) {
+      //only show imposter if its the current player.
+      var name2 = name + (p.isDead ? " - DEAD" : "");
+      if (p.id == this.player.id) {
+        name2 = name2 + (p.isImposter ? " - IMPOSTER" : "");
+      }
     }
+    name2 += " - " + p.team;
 
     return name2;
   }
@@ -513,6 +728,9 @@ class Game extends Phaser.Scene {
   // Bring everyone back to life. Set a random player as the imposter.
   resetGame(that) {
     //RESET GAME
+
+    this.basketBallNextPoint();
+
     var allKeys = Object.keys(that.allPlayers);
     allKeys.push(that.player.id);
 
@@ -592,6 +810,32 @@ class Game extends Phaser.Scene {
       });
   }
 
+  changeTeam() {
+    if (this.player.team == 1) {
+      this.player.team = 2;
+    } else {
+      this.player.team = 1;
+    }
+    firebase
+      .database()
+      .ref("players/" + this.player.id)
+      .update({
+        team: this.player.team,
+      })
+      .then(function () {
+        //console.log("saved");
+      })
+      .catch(function (error) {
+        //console.log("not saved" + error);
+      });
+
+    const name = this.getName(this.playerName, this.player);
+    this.player.labelRef.setText(name);
+    this.player.labelRef.style.setBackgroundColor(
+      this.player.team == 1 ? COLOR_1_HEX : COLOR_2_HEX
+    );
+  }
+
   killPlayer() {
     console.log("isImp: " + this.player.isImposter);
     if (this.player.isImposter == false) {
@@ -648,12 +892,17 @@ class Game extends Phaser.Scene {
 
     if (
       is.playerName != incoming.playerName ||
+      is.team != incoming.team ||
       is.isDead != incoming.isDead ||
       is.isImposter != incoming.isImposter
     ) {
       //console.log("RENAME!")
       var name = this.getName(incoming.playerName, incoming);
       is.labelRef.setText(name);
+
+      is.labelRef.style.setBackgroundColor(
+        incoming.team == 1 ? COLOR_1_HEX : COLOR_2_HEX
+      );
     }
 
     is.playerName = incoming.playerName;
@@ -662,7 +911,7 @@ class Game extends Phaser.Scene {
   }
 
   updateObjects(data) {
-    console.log("updateObjects");
+    //console.log("updateObjects");
     if (!data) return;
 
     //Update each ojbect
@@ -676,8 +925,6 @@ class Game extends Phaser.Scene {
         ball.x = incomingData.x;
         ball.y = incomingData.y;
         ball.angle = incomingData.angle;
-        // ball.body.velocity.x = incomingData.xVel;
-        // ball.body.velocity.y = incomingData.yVel;
         this.matter.body.setVelocity(ball.body, {
           x: incomingData.xVel,
           y: incomingData.yVel,
@@ -716,12 +963,18 @@ class Game extends Phaser.Scene {
         player.x = incomingData.x;
         player.y = incomingData.y;
         player.angle = incomingData.angle;
-        player.body.velocity.x = 0;
-        player.body.velocity.y = 0;
         player.id = id;
+        player.team = incomingData.team;
+        this.matter.body.setVelocity(player.body, {
+          x: incomingData.xVel,
+          y: incomingData.yVel,
+        });
 
         //console.log(player.spriteRef);
-        player.spriteRef.anims.play(incomingData.animation, true);
+        //console.log("incomgin anim: " + incomingData.animation);
+        if (incomingData.animation) {
+          player.spriteRef.anims.play(incomingData.animation, true);
+        }
       } else if (!this.allPlayers[id] && id != this.player.id) {
         // CREATE New PLAYERS
         if (IS_MULTIPLAYER) {

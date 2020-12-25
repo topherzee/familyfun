@@ -4,7 +4,7 @@ A simple networked multiplayer game.
 
 ## Developing
 
-`live-server --open=src/nobuild.html`
+`live-server --open=src/index.html`
 
 Currentluy not using npm bulid because it was slow and annoying.
 Just importing libraries directly.
