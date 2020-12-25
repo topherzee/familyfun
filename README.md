@@ -4,27 +4,52 @@ A simple networked multiplayer game.
 
 ## Developing
 
-`live-server --open=src/index.html`
+Use a local web server.
+(I recommend using npm to install 'live-server' globally.
+`npm i live-server -g`
+https://www.npmjs.com/package/live-server )
 
-Currentluy not using npm bulid because it was slow and annoying.
+Then run:
+`live-server --open=index.html`
+
+Note: not using npm to bulid anymore because it was slow and annoying.
 Just importing libraries directly.
 
 ## more info about game
 
-Play game at: https://topherzee.github.io/familyfun/dist/
+Play game at: https://topherzee.github.io/familyfun/
 
 The goal is to have a collection of easy to learn mini-games that family can play while video chatting on ZOOM.
 
-The first game is based on 'Werewolf/Mafia/Among Us'
+- Use arrow keys to move.
+- Use SPACEBAR to pickup and throw balls & blocks.
+
+## ADMIN
+
+Hit 'T' to delete all players (and so start over-ish)
+
+## BASKETBALL
+
+Current first game is basketball.
+Throw in hoops to get a point.
+
+- After it is thrown in hoop it 'sticks'. Hit 'R' to restart game.
+
+## IMPOSTER mode
+
+There is also an Imposter mode ('Werewolf/Mafia/Among Us') which is now disabled.
+You can enable it with /src/scenes/game.js .. IS_IMPOSTER constant.
 
 - One player is the "Imposter", they try to kill as many other players without being detected.
-
-- Use arrow keys to move.
-- Use SPACEBAR to pickup and throw blocks.
 
 - Imposter can use the 'k' key to kill. (Killed player shows state after 3 seconds.)
 - Use the 'r' key to reset the game and choose a new Imposter.
 - Use the 't' key to delete all players on firebase.
+
+## A few features.
+
+- Saves name to a browser cookie.
+- Playable on touchscreen device.
 
 ## Next steps
 
