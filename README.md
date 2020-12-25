@@ -79,39 +79,7 @@ Imposter game:
 - Breakout
 - Stackers
 
-## Build and deploy the game
-
-REPO is here: https://github.com/topherzee/familyfun
-
-Get the source-code. Download or Clone:
-
-```
-git clone https://github.com/topherzee/familyfun.git
-```
-
-Be sure you have `nodejs` installed. https://nodejs.org/en/
-
-Be sure you have `yarn` installed. https://yarnpkg.com/
-
-Open your terminal or 'command prompt' to the location where you installed the repository.
-
-Run:
-
-```
-> yarn
-> yarn start
-```
-
-Navigate to http://localhost:1234
-
 ## Deploying to the internet.
-
-Build the game:
-(Builds into the `dist` directory.)
-
-```
-> yarn build
-```
 
 Use git to save your changes and deploy:
 
