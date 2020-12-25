@@ -33,6 +33,7 @@ Hit 'T' to delete all players (and so start over-ish)
 Current first game is basketball.
 Throw in hoops to get a point.
 
+- Hit Q to change your team! (red or blue)
 - After it is thrown in hoop it 'sticks'. Hit 'R' to restart game.
 
 ## IMPOSTER mode
