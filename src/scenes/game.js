@@ -77,13 +77,13 @@ class Game extends Phaser.Scene {
   preload() {
     console.log("preload");
 
-    this.load.image("platform", "/src/assets/rock.png");
+    this.load.image("platform", "./src/assets/rock.png");
 
-    this.load.image("sky", "/src/assets/sky.png");
-    this.load.image("block", "/src/assets/block.png");
-    this.load.image("ball", "/src/assets/ball-64.png");
-    this.load.image("ground", "/src/assets/rock.png");
-    this.load.spritesheet("dude", "/src/assets/dude-mzimm1.png", {
+    this.load.image("sky", "./src/assets/sky.png");
+    this.load.image("block", "./src/assets/block.png");
+    this.load.image("ball", "./src/assets/ball-64.png");
+    this.load.image("ground", "./src/assets/rock.png");
+    this.load.spritesheet("dude", "./src/assets/dude-mzimm1.png", {
       frameWidth: 32,
       frameHeight: 48,
     });
