@@ -12,3 +12,5 @@ Win by getting to your side.
 Bump other player to send them back to spawn point.
 
 Stat a new game.
+
+Whoever wins the point - they run the screen and gamestate. and send it to others via META.

@@ -11,6 +11,12 @@ const HAS_BLOCKS = false;
 const GAME_TYPE = "CAPTURE_THE_FLAG";
 // "BASKETBALL", "CAPTURE_THE_FLAG"
 
+const GAME_STATE_LOBBY = "LOBBY";
+const GAME_STATE_PREGAME = "PREGAME";
+const GAME_STATE_PLAYING = "PLAYING";
+const GAME_STATE_POINT = "POINT";
+const GAME_STATE_GAMEOVER = "GAMEOVER";
+
 const NAME_ELEMENT_ID = "playerName";
 
 const GAME_WIDTH = 800;
@@ -29,6 +35,8 @@ var firebase_config = {
 
 // var game = new Phaser.Game(config);
 
+var gameState = GAME_STATE_PLAYING;
+
 var gfx;
 var platforms = [];
 var blocks = [];
@@ -43,6 +51,8 @@ var isTouch = false;
 
 var grabbed = null;
 
+var scoreSign = [];
+
 var buttonLeft = { isPressed: false };
 var buttonRight = { isPressed: false };
 var buttonUp = { isPressed: false };
@@ -53,9 +63,9 @@ const COLOR_2 = 0x6666ff;
 const COLOR_1_HEX = "#ff0000";
 const COLOR_2_HEX = "#6666ff";
 
-const SPAWN = [
-  { x: 50, y: 450 },
-  { x: 800, y: 450 },
+var TEAM = [
+  { x: 50, y: 450, name: "Red Team", score: 0 },
+  { x: 800, y: 450, name: "Blue Team", score: 0 },
 ];
 
 const SPAWN_FLAG = [
@@ -81,6 +91,7 @@ class Game extends Phaser.Scene {
     this.killPlayer.bind(this.killPlayer);
     this.killPlayer2.bind(this.killPlayer2);
     this.handleGoal.bind(this.handleGoal);
+    this.resetRound.bind(this.resetRound);
 
     this.allPlayers = {};
   }
@@ -116,7 +127,7 @@ class Game extends Phaser.Scene {
     // add Sky background sprit
     this.add.image(400, 300, "sky");
 
-    if (GAME_TYPE == "CAPTURE_THE_FLAG") {
+    if (GAME_TYPE == "CAPTURE_THE_FLAG" || GAME_TYPE == "BASKETBALL") {
       var line = new Phaser.Geom.Line(400, 0, 400, 600);
       this.add
         .graphics({
@@ -135,7 +146,21 @@ class Game extends Phaser.Scene {
           lineStyle: { width: 3, color: COLOR_2 },
         })
         .strokeLineShape(line);
+
+      var style = {
+        font: "24px Arial",
+        fill: "#fff",
+        backgroundColor: COLOR_1_HEX,
+      };
+      scoreSign[0] = this.add.text(GAME_WIDTH / 2 - 40, 10, "0", style);
+      style = {
+        font: "24px Arial",
+        fill: "#fff",
+        backgroundColor: COLOR_2_HEX,
+      };
+      scoreSign[1] = this.add.text(GAME_WIDTH / 2 + 20, 10, "0", style);
     }
+
     // Create ground platforms
     this.createPlatform(400, 200, true, "platform-1");
 
@@ -194,8 +219,8 @@ class Game extends Phaser.Scene {
 
     var playerData = {
       playerName: this.playerName,
-      x: SPAWN[team].x,
-      y: SPAWN[team].y,
+      x: TEAM[team].x,
+      y: TEAM[team].y,
       isDead: false,
       isImposter: false,
       team: 1,
@@ -251,6 +276,12 @@ class Game extends Phaser.Scene {
       this.updateObjects(snapshot.val());
     });
 
+    //Handle 'meta' events from Firebase.
+    var metaRef = firebase.database().ref("meta");
+    metaRef.on("value", (snapshot) => {
+      this.updateMeta(snapshot.val());
+    });
+
     //Handle changing player name with input field.
 
     const elName = document.getElementById(NAME_ELEMENT_ID);
@@ -292,7 +323,7 @@ class Game extends Phaser.Scene {
 
     this.input.keyboard.on("keydown_SPACE", function (event) {
       if (that.keyboardOK(event)) {
-        console.log("Hello from the SPACE Key!");
+        console.log("Hello from the SPACE DOWN Key!");
         that.actionGrab();
       }
     });
@@ -398,6 +429,8 @@ class Game extends Phaser.Scene {
         that.actionThrow();
       }
     });
+
+    //Testing this.endRound(1);
   }
 
   //////// update() is a special hook, called by Phaser3 engine. ///////////
@@ -436,7 +469,16 @@ class Game extends Phaser.Scene {
         x: this.player.body.position.x,
         y: this.player.body.position.y - 60,
       });
-      this.sendFlag(grabbed.gameObject);
+
+      if (GAME_TYPE == "CAPTURE_THE_FLAG") {
+        this.sendFlag(grabbed.gameObject);
+
+        var fieldSide = Math.round(this.player.x / GAME_WIDTH) + 1;
+        if (fieldSide == this.player.team) {
+          console.log("win the flag!");
+          this.endRound(this.player.team);
+        }
+      }
     }
 
     if (
@@ -472,6 +514,76 @@ class Game extends Phaser.Scene {
     this.player.previousTeam = this.player.team;
   }
 
+  updateScores() {
+    scoreSign[0].text = TEAM[0].score;
+    scoreSign[1].text = TEAM[1].score;
+  }
+
+  showPointScreen(team) {
+    var msg = TEAM[team - 1].name + " scored!";
+    var board = this.add.rectangle(0, 0, 400, 200, 0xffffff);
+    board.setStrokeStyle(4, 0x666666);
+
+    var style;
+
+    style = { font: "32px Arial", fill: "#000" };
+
+    var label1 = this.add.text(0, -30, msg, style);
+    label1.setOrigin(0.5);
+
+    style = { font: "24px Arial", fill: "#666" };
+
+    var label2 = this.add.text(0, 10, "Next round starts soon", style);
+    label2.setOrigin(0.5);
+
+    var group = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT / 2, [
+      board,
+      label1,
+      label2,
+    ]);
+
+    var seconds = 2;
+    var intervalRef = setInterval(function () {
+      label2.text = "Next round starts in " + seconds + ".";
+      seconds--;
+    }, 1000);
+    group.intervalRef = intervalRef;
+    return group;
+  }
+
+  endRound(team) {
+    if (gameState != GAME_STATE_PLAYING) {
+      return;
+    }
+
+    //Things that only the point maker should run.
+    gameState = GAME_STATE_POINT;
+    TEAM[team - 1].score++;
+    //this.updateScores();
+    firebase
+      .database()
+      .ref("meta/")
+      .update({
+        scores: [TEAM[0].score, TEAM[1].score],
+        teamThatScored: team,
+        gameState: GAME_STATE_POINT,
+      });
+
+    this.endRoundEveryone(team);
+  }
+
+  //Things that all devices must do.
+  endRoundEveryone(team) {
+    var screen = this.showPointScreen(team);
+
+    var that = this;
+    setTimeout(function () {
+      clearInterval(screen.intervalRef);
+      screen.destroy();
+      that.resetRound();
+    }, 2000);
+  }
+
   actionLeft(that) {}
   actionRight(that) {}
   actionUp() {
@@ -482,6 +594,7 @@ class Game extends Phaser.Scene {
   }
 
   actionGrab() {
+    console.log("actionGrab");
     spaceWasDown = true;
     if (grabbed) {
       return; //Already have something grabbed.
@@ -514,6 +627,7 @@ class Game extends Phaser.Scene {
     if (GAME_TYPE == "CAPTURE_THE_FLAG") {
       //flag
       var aInt = this.matter.intersectBody(this.player.body, flags);
+      console.log("actionGrab flag length: " + aInt.length);
       if (aInt.length > 0) {
         // console.log(
         //   "teams: flag:" + aInt[0].gameObject.team + " mine:" + this.player.team
@@ -521,6 +635,7 @@ class Game extends Phaser.Scene {
         //can only grab other teams flag.
         if (aInt[0].gameObject.team != this.player.team) {
           grabbed = aInt[0];
+          console.log("actionGrab flag grabbed");
         }
       }
     }
@@ -599,14 +714,14 @@ class Game extends Phaser.Scene {
           const collided = collidedBody.gameObject;
           //console.log("with:" + collidedBody.label);
           if (collided && collided.type && collided.type == "PLAYER") {
-            console.log("collided with another player");
+            //console.log("collided with another player");
 
             var fieldSide = Math.round(that.player.x / GAME_WIDTH) + 1;
             if (fieldSide != that.player.team) {
               // var allKeys = Object.keys(that.allPlayers);
               if (collided.team != that.player.team) {
-                that.player.x = SPAWN[that.player.team - 1].x;
-                that.player.y = SPAWN[that.player.team - 1].y;
+                that.player.x = TEAM[that.player.team - 1].x;
+                that.player.y = TEAM[that.player.team - 1].y;
               }
             }
           }
@@ -624,8 +739,8 @@ class Game extends Phaser.Scene {
     if (collided.id) {
       var allKeys = Object.keys(data);
       if (allKeys.includes(collided)) {
-        that.player.x = SPAWN[0].x;
-        that.player.y = SPAWN[0].y;
+        that.player.x = TEAM[0].x;
+        that.player.y = TEAM[0].y;
       }
     }
   }
@@ -925,15 +1040,51 @@ class Game extends Phaser.Scene {
         name2 = name2 + (p.isImposter ? " - IMPOSTER" : "");
       }
     }
-    //name2 += " - " + p.team;
+    name2 += " - " + p.team;
 
     return name2;
   }
 
-  // Bring everyone back to life. Set a random player as the imposter.
   resetGame(that) {
-    //RESET GAME
     console.log("resetGame");
+
+    if (GAME_TYPE == "CAPTURE_THE_FLAG") {
+      // Assign teams
+      var team = 1;
+      this.player.team = team;
+
+      Object.keys(this.allPlayers).forEach((id) => {
+        if (this.allPlayers[id] && id != this.player.id) {
+          // set team for players - alternating.
+          const player = this.allPlayers[id];
+          team = team == 1 ? 2 : 1;
+          this.allPlayers[id].team = team;
+          this.updatePlayerLabel(player.playerName, player.labelRef, player);
+
+          console.log(
+            "resetGame. set team:" + player.name + "- " + team + " - " + id
+          );
+        }
+      });
+
+      firebase
+        .database()
+        .ref("meta/")
+        .set({
+          scores: [0, 0],
+          gameMaster: this.player.id,
+          gameState: GAME_STATE_PLAYING,
+          teamThatScored: -1,
+        });
+
+      this.resetRound(that);
+    }
+  }
+
+  // Bring everyone back to life. Set a random player as the imposter.
+  resetRound(that) {
+    //RESET GAME
+    console.log("resetRound");
 
     if (GAME_TYPE == "BASKETBALL") {
       this.basketBallNextPoint();
@@ -972,6 +1123,8 @@ class Game extends Phaser.Scene {
         });
     }
 
+    var team;
+
     if (GAME_TYPE == "BASKETBALL") {
       const ball = balls[0];
       ball.x = 280;
@@ -993,11 +1146,10 @@ class Game extends Phaser.Scene {
       this.sendFlag(flag1);
       this.sendFlag(flag2);
 
-      // Assign teams
-      var team = 1;
-      this.player.team = team;
-      this.player.x = SPAWN[team - 1].x;
-      this.player.y = SPAWN[team - 1].y;
+      team = this.player.team;
+
+      this.player.x = TEAM[team - 1].x;
+      this.player.y = TEAM[team - 1].y;
       const INDENT = 60;
       var count = 1;
       var x;
@@ -1005,28 +1157,27 @@ class Game extends Phaser.Scene {
       Object.keys(this.allPlayers).forEach((id) => {
         console.log(id);
         if (this.allPlayers[id] && id != this.player.id) {
-          // set team for players - randomly.
+          // set position based on team.
           const player = this.allPlayers[id];
-          team = team == 1 ? 2 : 1;
+
           count += 1;
           var indent;
-          if (team == 1) {
+          if (player.team == 1) {
             indent = INDENT * (count / 2);
           } else {
             indent = -INDENT * (count / 2);
           }
 
           console.log("team:" + team + "indent:" + indent);
-          // player.x = SPAWN[team - 1].x;
-          // player.y = SPAWN[team - 1].y;
+
           //write to DB:
           firebase
             .database()
             .ref("players/" + player.id)
             .update({
-              team: team,
-              x: SPAWN[team - 1].x + indent,
-              y: SPAWN[team - 1].y,
+              team: player.team,
+              x: TEAM[team - 1].x + indent,
+              y: TEAM[team - 1].y,
               xVel: 0,
               yVel: 0,
               angle: 0,
@@ -1037,6 +1188,7 @@ class Game extends Phaser.Scene {
 
       // Spawn players
     }
+    gameState = GAME_STATE_PLAYING;
   }
 
   closestPlayer() {
@@ -1153,6 +1305,16 @@ class Game extends Phaser.Scene {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  updatePlayerLabel(playerName, labelRef, player) {
+    console.log("updatePlayerLabel:" + playerName + " - " + player.team);
+    var name = this.getName(playerName, player);
+    labelRef.setText(name);
+
+    labelRef.style.setBackgroundColor(
+      player.team == 1 ? COLOR_1_HEX : COLOR_2_HEX
+    );
+  }
+
   updatePlayerNameDeathAndStuff(is, incoming) {
     //console.log(incoming);
     if (!incoming) {
@@ -1165,19 +1327,30 @@ class Game extends Phaser.Scene {
       is.isDead != incoming.isDead ||
       is.isImposter != incoming.isImposter
     ) {
-      // if (true) {
-      console.log("RENAME!");
-      var name = this.getName(incoming.playerName, incoming);
-      is.labelRef.setText(name);
-
-      is.labelRef.style.setBackgroundColor(
-        incoming.team == 1 ? COLOR_1_HEX : COLOR_2_HEX
-      );
+      this.updatePlayerLabel(incoming.playerName, is.labelRef, incoming);
     }
 
     is.playerName = incoming.playerName;
     is.isDead = incoming.isDead;
     is.isImposter = incoming.isImposter;
+  }
+
+  updateMeta(data) {
+    console.log("updateMeta");
+    if (!data) return;
+
+    //Update each ojbect
+    const ball = balls[0];
+
+    if (GAME_TYPE == "BASKETBALL" || GAME_TYPE == "CAPTURE_THE_FLAG") {
+      TEAM[0].score = data.scores[0];
+      TEAM[1].score = data.scores[1];
+
+      this.updateScores();
+      if (data.gameState == GAME_STATE_POINT) {
+        this.endRoundEveryone(data.teamThatScored);
+      }
+    }
   }
 
   updateObjects(data) {
@@ -1221,7 +1394,8 @@ class Game extends Phaser.Scene {
   }
 
   updatePlayers(data) {
-    //console.log("updatePlayers" + data);
+    //console.log("updatePlayers");
+
     if (!data) return;
     //Update current player (died?)
     this.updatePlayerNameDeathAndStuff(this.player, data[this.player.id]);
