@@ -22,6 +22,9 @@ const NAME_ELEMENT_ID = "playerName";
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 
+const GAME_POINT_SECONDS = 5;
+const SCORE_TO_WIN = 2;
+
 //Firebase config
 var firebase_config = {
   apiKey: "AIzaSyDwPOmo6jBoi4ZGkt09PB4IVXHnxwlXkqk",
@@ -520,20 +523,43 @@ class Game extends Phaser.Scene {
   }
 
   showPointScreen(team) {
-    var msg = TEAM[team - 1].name + " scored!";
-    var board = this.add.rectangle(0, 0, 400, 200, 0xffffff);
-    board.setStrokeStyle(4, 0x666666);
+    var msg1 = TEAM[team - 1].name + " scored!";
+    var msg2 = "Next round starts soon";
+    var backColor = 0xffffff;
+    var borderColor = 0x666666;
+    return this.showScreen(team, msg1, msg2, backColor, borderColor, true);
+  }
+
+  showWinScreen(team) {
+    var msg1 = TEAM[team - 1].name + "  WINS!";
+    var msg2 = "Congratulations! Click to start a new game.";
+    var backColor = 0xffffff;
+    var borderColor = 0xffff99;
+    var screen = this.showScreen(
+      team,
+      msg1,
+      msg2,
+      backColor,
+      borderColor,
+      false
+    );
+    return screen;
+  }
+
+  showScreen(team, msg1, msg2, backColor, borderColor, isCountdown) {
+    var board = this.add.rectangle(0, 0, 500, 200, backColor);
+    board.setStrokeStyle(4, borderColor);
 
     var style;
 
     style = { font: "32px Arial", fill: "#000" };
 
-    var label1 = this.add.text(0, -30, msg, style);
+    var label1 = this.add.text(0, -30, msg1, style);
     label1.setOrigin(0.5);
 
     style = { font: "24px Arial", fill: "#666" };
 
-    var label2 = this.add.text(0, 10, "Next round starts soon", style);
+    var label2 = this.add.text(0, 10, msg2, style);
     label2.setOrigin(0.5);
 
     var group = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT / 2, [
@@ -542,11 +568,15 @@ class Game extends Phaser.Scene {
       label2,
     ]);
 
-    var seconds = 2;
-    var intervalRef = setInterval(function () {
-      label2.text = "Next round starts in " + seconds + ".";
-      seconds--;
-    }, 1000);
+    var intervalRef;
+    var seconds = GAME_POINT_SECONDS;
+    if (isCountdown) {
+      intervalRef = setInterval(function () {
+        label2.text = "Next round starts in " + seconds + ".";
+        seconds--;
+      }, 1000);
+    }
+
     group.intervalRef = intervalRef;
     return group;
   }
@@ -557,8 +587,14 @@ class Game extends Phaser.Scene {
     }
 
     //Things that only the point maker should run.
-    gameState = GAME_STATE_POINT;
     TEAM[team - 1].score++;
+
+    if (TEAM[team - 1].score >= SCORE_TO_WIN) {
+      gameState = GAME_STATE_GAMEOVER;
+    } else {
+      gameState = GAME_STATE_POINT;
+    }
+
     //this.updateScores();
     firebase
       .database()
@@ -566,7 +602,7 @@ class Game extends Phaser.Scene {
       .update({
         scores: [TEAM[0].score, TEAM[1].score],
         teamThatScored: team,
-        gameState: GAME_STATE_POINT,
+        gameState: gameState,
       });
 
     this.endRoundEveryone(team);
@@ -574,14 +610,20 @@ class Game extends Phaser.Scene {
 
   //Things that all devices must do.
   endRoundEveryone(team) {
-    var screen = this.showPointScreen(team);
+    var screen;
+
+    if (TEAM[team - 1].score >= SCORE_TO_WIN) {
+      screen = this.showWinScreen(team);
+    } else {
+      screen = this.showPointScreen(team);
+    }
 
     var that = this;
     setTimeout(function () {
       clearInterval(screen.intervalRef);
       screen.destroy();
       that.resetRound();
-    }, 2000);
+    }, GAME_POINT_SECONDS * 1000);
   }
 
   actionLeft(that) {}
