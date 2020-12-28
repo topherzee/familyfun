@@ -13,6 +13,9 @@ const GAME_TYPE = "CAPTURE_THE_FLAG";
 
 const NAME_ELEMENT_ID = "playerName";
 
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+
 //Firebase config
 var firebase_config = {
   apiKey: "AIzaSyDwPOmo6jBoi4ZGkt09PB4IVXHnxwlXkqk",
@@ -52,7 +55,7 @@ const COLOR_2_HEX = "#6666ff";
 
 const SPAWN = [
   { x: 50, y: 450 },
-  { x: 750, y: 450 },
+  { x: 800, y: 450 },
 ];
 
 const SPAWN_FLAG = [
@@ -134,12 +137,12 @@ class Game extends Phaser.Scene {
         .strokeLineShape(line);
     }
     // Create ground platforms
-    this.createPlatform(400, 200);
+    this.createPlatform(400, 200, true, "platform-1");
 
-    this.createPlatform(50, 350);
-    this.createPlatform(750, 350);
+    this.createPlatform(50, 350, true, "platform-2");
+    this.createPlatform(750, 350, true, "platform-3");
 
-    this.createPlatform(400, 490);
+    this.createPlatform(400, 490, true, "platform-4");
 
     // this.createPlatform(600, 400);
 
@@ -162,12 +165,14 @@ class Game extends Phaser.Scene {
 
     if (GAME_TYPE == "CAPTURE_THE_FLAG") {
       flag1 = this.createFlag(
+        1,
         "flag_1",
         SPAWN_FLAG[0].x,
         SPAWN_FLAG[0].y,
         COLOR_1
       );
       flag2 = this.createFlag(
+        2,
         "flag_2",
         SPAWN_FLAG[1].x,
         SPAWN_FLAG[1].y,
@@ -201,6 +206,12 @@ class Game extends Phaser.Scene {
 
     this.playerSprite = this.add.sprite(0, 0, "dude");
     this.player = this.createPlayer(playerData, this.playerSprite, true);
+
+    // this.player.setOnCollide(function (collisionData) {
+    //   console.log("player collided.");
+    //   var that = this;
+    //   this.handlePlayerCollide(collisionData, that);
+    // });
 
     // Create player animation
     this.anims.create({
@@ -478,9 +489,9 @@ class Game extends Phaser.Scene {
 
     //blocks
     if (HAS_BLOCKS) {
-      var intersects = this.matter.intersectBody(this.player.body, blocks);
-      if (intersects.length > 0) {
-        this.matter.body.setPosition(intersects[0], {
+      var aInt = this.matter.intersectBody(this.player.body, blocks);
+      if (aInt.length > 0) {
+        this.matter.body.setPosition(aInt[0], {
           x: this.player.body.position.x,
           y: this.player.body.position.y - 20,
         });
@@ -489,9 +500,9 @@ class Game extends Phaser.Scene {
 
     if (GAME_TYPE == "BASKETBALL") {
       //ball
-      var intersects = this.matter.intersectBody(this.player.body, balls[0]);
-      if (intersects.length > 0) {
-        this.matter.body.setPosition(intersects[0], {
+      var aInt = this.matter.intersectBody(this.player.body, balls[0]);
+      if (aInt.length > 0) {
+        this.matter.body.setPosition(aInt[0], {
           x: this.player.body.position.x,
           y: this.player.body.position.y - 20,
         });
@@ -502,9 +513,15 @@ class Game extends Phaser.Scene {
 
     if (GAME_TYPE == "CAPTURE_THE_FLAG") {
       //flag
-      var intersects = this.matter.intersectBody(this.player.body, flags);
-      if (intersects.length > 0) {
-        grabbed = intersects[0];
+      var aInt = this.matter.intersectBody(this.player.body, flags);
+      if (aInt.length > 0) {
+        // console.log(
+        //   "teams: flag:" + aInt[0].gameObject.team + " mine:" + this.player.team
+        // );
+        //can only grab other teams flag.
+        if (aInt[0].gameObject.team != this.player.team) {
+          grabbed = aInt[0];
+        }
       }
     }
   }
@@ -555,12 +572,15 @@ class Game extends Phaser.Scene {
   }
 
   handleCollisions(event, that, bodyA, bodyB) {
-    if (that.player) {
-      //console.log("c!");
-      if (bodyA == that.player.body || bodyB == that.player.body) {
-        //console.log("collide!");
+    //console.log("handleCollisions");
 
-        const collidedBody = bodyA == that.player.body ? bodyB : bodyA;
+    if (that.player) {
+      //console.log("c! " + bodyA.label + " - " + bodyB.label);
+      //console.log(that.player.body.label);
+      if (bodyA.gameObject == that.player || bodyB.gameObject == that.player) {
+        //console.log("active player collide!");
+
+        const collidedBody = bodyA.gameObject == that.player ? bodyB : bodyA;
 
         if (GAME_TYPE == "BASKETBALL") {
           const ball = balls[0];
@@ -569,6 +589,43 @@ class Game extends Phaser.Scene {
             that.sendBall(ball);
           }
         }
+
+        if (GAME_TYPE == "CAPTURE_THE_FLAG") {
+          //console.log("playerCollided");
+
+          //See if they collided with another player.
+
+          //const collidedBody = c.bodyA == that.player.body ? c.bodyB : c.bodyA;
+          const collided = collidedBody.gameObject;
+          //console.log("with:" + collidedBody.label);
+          if (collided && collided.type && collided.type == "PLAYER") {
+            console.log("collided with another player");
+
+            var fieldSide = Math.round(that.player.x / GAME_WIDTH) + 1;
+            if (fieldSide != that.player.team) {
+              // var allKeys = Object.keys(that.allPlayers);
+              if (collided.team != that.player.team) {
+                that.player.x = SPAWN[that.player.team - 1].x;
+                that.player.y = SPAWN[that.player.team - 1].y;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  handlePlayerCollide(c, that) {
+    console.log("playerCollided");
+
+    const collidedBody = c.bodyA == that.player.body ? c.bodyB : c.bodyA;
+    const collided = collidedBody.gameObject;
+
+    if (collided.id) {
+      var allKeys = Object.keys(data);
+      if (allKeys.includes(collided)) {
+        that.player.x = SPAWN[0].x;
+        that.player.y = SPAWN[0].y;
       }
     }
   }
@@ -678,7 +735,7 @@ class Game extends Phaser.Scene {
     //   inertia: Infinity
   }
 
-  createFlag(id, x, y, color) {
+  createFlag(team, id, x, y, color) {
     console.log("create flag");
 
     const WIDTH = 100;
@@ -687,6 +744,7 @@ class Game extends Phaser.Scene {
 
     var flag = this.add.polygon(x, y, flagVerts, color, 1.0);
     flag.id = id;
+    flag.team = team;
     // this.matter.add.gameObject(flag, {
     //   shape: { type: "fromVerts", verts: flagVerts, flagInternal: true },
     // });
@@ -749,13 +807,13 @@ class Game extends Phaser.Scene {
     ball.id = 2;
 
     var that = this;
-    ball.setOnCollide(function (pair) {
-      that.checkBallForScore(pair, that);
+    ball.setOnCollide(function (collisionData) {
+      that.checkBallForScore(collisionData, that);
     });
     balls.push(ball);
   }
 
-  createPlatform(x, y, isStaticD) {
+  createPlatform(x, y, isStaticD, label) {
     var p = this.matter.add
       .image(x, y, "ground", null, {
         restitution: 0.4,
@@ -772,6 +830,7 @@ class Game extends Phaser.Scene {
       type: "fromVerts",
       verts: arrow,
     });
+    p.body.label = label;
 
     // var arrow = '40 0 40 20 100 20 100 80 40 80 40 100 0 50';
     // var poly = this.add.polygon(400, 300, arrow, 0x0000ff, 0.2);
@@ -818,6 +877,7 @@ class Game extends Phaser.Scene {
     //var newPlayer = mSprite;
     var Bodies = Phaser.Physics.Matter.Matter.Bodies;
     var rect = Bodies.rectangle(0, 0, 40, 40);
+    rect.label = "player-rect";
     var jumpSensor = Bodies.rectangle(0, 30, 38, 10, {
       isSensor: true,
       label: "jump-sensor",
@@ -834,6 +894,7 @@ class Game extends Phaser.Scene {
     });
 
     newPlayer.setExistingBody(compoundBody);
+    newPlayer.body.label = "a player";
     //newPlayer.setPosition(400, 300);
     //newPlayer.body.setOffset(0, -200);
 
@@ -849,6 +910,7 @@ class Game extends Phaser.Scene {
     newPlayer.team = playerData.team;
     newPlayer.id = playerData.id;
     newPlayer.jumpSensor = jumpSensor;
+    newPlayer.type = "PLAYER";
 
     return newPlayer;
   }
@@ -863,7 +925,7 @@ class Game extends Phaser.Scene {
         name2 = name2 + (p.isImposter ? " - IMPOSTER" : "");
       }
     }
-    name2 += " - " + p.team;
+    //name2 += " - " + p.team;
 
     return name2;
   }
@@ -936,6 +998,9 @@ class Game extends Phaser.Scene {
       this.player.team = team;
       this.player.x = SPAWN[team - 1].x;
       this.player.y = SPAWN[team - 1].y;
+      const INDENT = 60;
+      var count = 1;
+      var x;
 
       Object.keys(this.allPlayers).forEach((id) => {
         console.log(id);
@@ -943,8 +1008,15 @@ class Game extends Phaser.Scene {
           // set team for players - randomly.
           const player = this.allPlayers[id];
           team = team == 1 ? 2 : 1;
+          count += 1;
+          var indent;
+          if (team == 1) {
+            indent = INDENT * (count / 2);
+          } else {
+            indent = -INDENT * (count / 2);
+          }
 
-          console.log("team:" + team);
+          console.log("team:" + team + "indent:" + indent);
           // player.x = SPAWN[team - 1].x;
           // player.y = SPAWN[team - 1].y;
           //write to DB:
@@ -953,7 +1025,7 @@ class Game extends Phaser.Scene {
             .ref("players/" + player.id)
             .update({
               team: team,
-              x: SPAWN[team - 1].x,
+              x: SPAWN[team - 1].x + indent,
               y: SPAWN[team - 1].y,
               xVel: 0,
               yVel: 0,
