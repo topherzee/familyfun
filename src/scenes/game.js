@@ -11,11 +11,14 @@ const HAS_BLOCKS = false;
 const GAME_TYPE = "CAPTURE_THE_FLAG";
 // "BASKETBALL", "CAPTURE_THE_FLAG"
 
-const GAME_STATE_LOBBY = "LOBBY";
-const GAME_STATE_PREGAME = "PREGAME";
-const GAME_STATE_PLAYING = "PLAYING";
-const GAME_STATE_POINT = "POINT";
-const GAME_STATE_GAMEOVER = "GAMEOVER";
+const State = {
+  LOBBY: "LOBBY",
+  PREGAME: "PREGAME",
+  PLAYING: "PLAYING",
+  POINT: "POINT",
+  PREP_ROUND: "PREP_ROUND",
+  GAMEOVER: "GAMEOVER",
+};
 
 const NAME_ELEMENT_ID = "playerName";
 
@@ -38,7 +41,7 @@ var firebase_config = {
 
 // var game = new Phaser.Game(config);
 
-var gameState = GAME_STATE_PLAYING;
+var gameState = State.PLAYING;
 
 var gfx;
 var platforms = [];
@@ -72,8 +75,8 @@ var TEAM = [
 ];
 
 const SPAWN_FLAG = [
-  { x: 175, y: 100 },
-  { x: 625, y: 100 },
+  { x: 150, y: 100 },
+  { x: 650, y: 100 },
 ];
 
 class Game extends Phaser.Scene {
@@ -274,9 +277,19 @@ class Game extends Phaser.Scene {
     });
 
     //Handle object events from Firebase.
-    var objectsRef = firebase.database().ref("objects");
+    var objectsRef = firebase.database().ref("objects/ball");
     objectsRef.on("value", (snapshot) => {
-      this.updateObjects(snapshot.val());
+      this.updateBall(snapshot.val());
+    });
+
+    var objectsRef = firebase.database().ref("objects/flag_1");
+    objectsRef.on("value", (snapshot) => {
+      this.updateFlag("flag_1", snapshot.val());
+    });
+
+    var objectsRef = firebase.database().ref("objects/flag_2");
+    objectsRef.on("value", (snapshot) => {
+      this.updateFlag("flag_2", snapshot.val());
     });
 
     //Handle 'meta' events from Firebase.
@@ -344,15 +357,6 @@ class Game extends Phaser.Scene {
       }
     });
 
-    if (IS_IMPOSTER) {
-      this.input.keyboard.on("keydown_K", function (event) {
-        if (that.keyboardOK(event)) {
-          console.log("Hello from the K Key!");
-
-          that.killPlayer(that);
-        }
-      });
-    }
     this.input.keyboard.on("keydown_T", function (event) {
       if (that.keyboardOK(event)) {
         console.log("Hello from the T Key!");
@@ -368,6 +372,16 @@ class Game extends Phaser.Scene {
         that.changeTeam(that);
       }
     });
+
+    if (IS_IMPOSTER) {
+      this.input.keyboard.on("keydown_K", function (event) {
+        if (that.keyboardOK(event)) {
+          console.log("Hello from the K Key!");
+
+          that.killPlayer(that);
+        }
+      });
+    }
 
     //Could be better in future: https://github.com/dxu/matter-collision-events
     this.matter.world.on("collisionactive", function (event, bodyA, bodyB) {
@@ -413,6 +427,8 @@ class Game extends Phaser.Scene {
     buttonGrab.isPressed = false;
 
     this.input.on("gameobjectdown", function (pointer, gameObject) {
+      if (gameState != State.PLAYING) return;
+
       //console.log(gameObject);
       console.log(gameObject.id);
       gameObject.setFillStyle(0x0000ff);
@@ -425,6 +441,7 @@ class Game extends Phaser.Scene {
     });
 
     this.input.on("gameobjectup", function (pointer, gameObject) {
+      if (gameState != State.PLAYING) return;
       console.log(gameObject.id + " up");
       gameObject.setFillStyle(0x000099);
       gameObject.isPressed = false;
@@ -443,6 +460,10 @@ class Game extends Phaser.Scene {
     //console.log("right:" + (cursorRightButton && cursorRightButton.isPressed));
 
     // Create movement controller
+    if (gameState != State.PLAYING) {
+      return;
+    }
+
     this.cursors = this.input.keyboard.createCursorKeys();
 
     if (this.cursors.left.isDown || (isTouch && buttonLeft.isPressed)) {
@@ -582,17 +603,20 @@ class Game extends Phaser.Scene {
   }
 
   endRound(team) {
-    if (gameState != GAME_STATE_PLAYING) {
+    if (gameState != State.PLAYING) {
       return;
     }
+    console.log("endRound");
+
+    grabbed = null;
 
     //Things that only the point maker should run.
     TEAM[team - 1].score++;
 
     if (TEAM[team - 1].score >= SCORE_TO_WIN) {
-      gameState = GAME_STATE_GAMEOVER;
+      gameState = State.GAMEOVER;
     } else {
-      gameState = GAME_STATE_POINT;
+      gameState = State.POINT;
     }
 
     //this.updateScores();
@@ -610,7 +634,10 @@ class Game extends Phaser.Scene {
 
   //Things that all devices must do.
   endRoundEveryone(team) {
+    console.log("endRoundEveryone");
     var screen;
+    grabbed = null;
+    this.playerSprite.anims.play("turn"); //stop running.
 
     if (TEAM[team - 1].score >= SCORE_TO_WIN) {
       screen = this.showWinScreen(team);
@@ -622,7 +649,7 @@ class Game extends Phaser.Scene {
     setTimeout(function () {
       clearInterval(screen.intervalRef);
       screen.destroy();
-      that.resetRound();
+      that.resetRound(that);
     }, GAME_POINT_SECONDS * 1000);
   }
 
@@ -762,8 +789,10 @@ class Game extends Phaser.Scene {
             if (fieldSide != that.player.team) {
               // var allKeys = Object.keys(that.allPlayers);
               if (collided.team != that.player.team) {
+                // Send the player back to starting point.
                 that.player.x = TEAM[that.player.team - 1].x;
                 that.player.y = TEAM[that.player.team - 1].y;
+                grabbed = null;
               }
             }
           }
@@ -823,6 +852,7 @@ class Game extends Phaser.Scene {
 
   sendBall(ball) {
     console.log("sendBall");
+    if (gameState != State.PLAYING) return;
     firebase
       .database()
       .ref("objects/" + ball.id)
@@ -839,8 +869,9 @@ class Game extends Phaser.Scene {
 
   // GAME OBJECT
   sendFlag(flag) {
+    //if (gameState != State.PLAYING) return;
     //console.log(flag);
-    //console.log("sendFlag: " + flag.id + " x:" + flag.x);
+    console.log("sendFlag: " + flag.id);
     firebase
       .database()
       .ref("objects/" + flag.id)
@@ -1091,45 +1122,162 @@ class Game extends Phaser.Scene {
     console.log("resetGame");
 
     if (GAME_TYPE == "CAPTURE_THE_FLAG") {
-      // Assign teams
-      var team = 1;
-      this.player.team = team;
-
-      Object.keys(this.allPlayers).forEach((id) => {
-        if (this.allPlayers[id] && id != this.player.id) {
-          // set team for players - alternating.
-          const player = this.allPlayers[id];
-          team = team == 1 ? 2 : 1;
-          this.allPlayers[id].team = team;
-          this.updatePlayerLabel(player.playerName, player.labelRef, player);
-
-          console.log(
-            "resetGame. set team:" + player.name + "- " + team + " - " + id
-          );
-        }
-      });
-
+      gameState = State.PREP_ROUND;
       firebase
         .database()
         .ref("meta/")
         .set({
           scores: [0, 0],
           gameMaster: this.player.id,
-          gameState: GAME_STATE_PLAYING,
+          gameState: State.PREP_ROUND,
           teamThatScored: -1,
         });
 
-      this.resetRound(that);
+      setTimeout(function () {
+        // Assign teams
+        var team = 1;
+        that.player.team = team;
+
+        Object.keys(that.allPlayers).forEach((id) => {
+          if (that.allPlayers[id] && id != that.player.id) {
+            // set team for players - alternating.
+            const player = that.allPlayers[id];
+            team = team == 1 ? 2 : 1;
+            that.allPlayers[id].team = team;
+            that.updatePlayerLabel(player.playerName, player.labelRef, player);
+
+            console.log("resetGame. set team:" + player.id + "- " + team);
+          }
+        });
+
+        that.resetRoundShared(that);
+      }, 1000);
     }
   }
 
   // Bring everyone back to life. Set a random player as the imposter.
   resetRound(that) {
     //RESET GAME
-    console.log("resetRound");
+    console.log("resetRound (" + that.player.id + ")");
 
+    // Block all input.
+    gameState = State.PREP_ROUND;
+    firebase.database().ref("meta/").set({
+      gameState: State.PREP_ROUND,
+    });
+
+    setTimeout(function () {
+      that.resetRoundShared(that);
+    }, 1000);
+  }
+
+  // Bring everyone back to life. Set a random player as the imposter.
+  resetRoundShared(that) {
+    //RESET GAME
+    console.log("resetRoundShared (" + that.player.id + ")");
+
+    var team;
     if (GAME_TYPE == "BASKETBALL") {
       this.basketBallNextPoint();
+      const ball = balls[0];
+      ball.x = 280;
+      ball.y = 220;
+      ball.body.velocity.x = 0;
+      ball.body.velocity.y = 0;
+
+      that.sendBall(ball);
+    }
+
+    if (GAME_TYPE == "CAPTURE_THE_FLAG") {
+      grabbed = null;
+
+      flag1.x = SPAWN_FLAG[0].x;
+      flag1.y = SPAWN_FLAG[0].y;
+
+      flag2.x = SPAWN_FLAG[1].x;
+      flag2.y = SPAWN_FLAG[1].y;
+
+      this.sendFlag(flag1);
+      this.sendFlag(flag2);
+
+      team = this.player.team;
+
+      // Set current player.
+      this.player.x = TEAM[team - 1].x;
+      this.player.y = TEAM[team - 1].y;
+      this.player.setVelocityX(0);
+      this.player.setVelocityY(0);
+
+      // Object.keys(this.allPlayers).forEach((id) => {
+      //   console.log("block:" + id);
+      //   if (this.allPlayers[id] && id != this.player.id) {
+      //     //BLOCK INPUT in order for the position setting not to get
+      //     //clobbered by parallel input from the others.
+      //     const player = this.allPlayers[id];
+      //     firebase
+      //       .database()
+      //       .ref("players/" + player.id)
+      //       .update({
+      //         blockInput: true,
+      //       });
+      //   }
+      // });
+
+      // Block all input.
+      // gameState = State.PREP_ROUND;
+      // firebase.database().ref("meta/").set({
+      //   gameState: State.PREP_ROUND,
+      // });
+
+      var that = this;
+
+      Object.keys(that.allPlayers).forEach((id) => {
+        const player = that.allPlayers[id];
+        console.log(
+          "resetRound Check player:" + player.id + " team:" + player.team
+        );
+      });
+
+      // setTimeout(function () {
+      const INDENT = 60;
+      var count = 1;
+      var x;
+
+      Object.keys(that.allPlayers).forEach((id) => {
+        if (that.allPlayers[id] && id != that.player.id) {
+          // set position based on team.
+          const player = that.allPlayers[id];
+
+          count += 1;
+          var indent;
+          if (player.team == 1) {
+            indent = INDENT * (count / 2);
+          } else {
+            indent = -INDENT * (count / 2);
+          }
+
+          console.log(
+            "player:" + player.id + " team:" + player.team + " indent:" + indent
+          );
+          //console.log("resetRound for p:" + player.id);
+          //write to DB:
+          firebase
+            .database()
+            .ref("players/" + player.id)
+            .update({
+              team: player.team,
+              x: TEAM[team - 1].x + indent,
+              y: TEAM[team - 1].y,
+              xVel: 0,
+              yVel: 0,
+              angle: 0,
+              forceExceptionalUpdate: true,
+            });
+        }
+      });
+      // }, 1000);
+
+      // Spawn players
     }
 
     if (IS_IMPOSTER) {
@@ -1165,72 +1313,7 @@ class Game extends Phaser.Scene {
         });
     }
 
-    var team;
-
-    if (GAME_TYPE == "BASKETBALL") {
-      const ball = balls[0];
-      ball.x = 280;
-      ball.y = 220;
-      ball.body.velocity.x = 0;
-      ball.body.velocity.y = 0;
-
-      that.sendBall(ball);
-    }
-    if (GAME_TYPE == "CAPTURE_THE_FLAG") {
-      grabbed = null;
-
-      flag1.x = SPAWN_FLAG[0].x;
-      flag1.y = SPAWN_FLAG[0].y;
-
-      flag2.x = SPAWN_FLAG[1].x;
-      flag2.y = SPAWN_FLAG[1].y;
-
-      this.sendFlag(flag1);
-      this.sendFlag(flag2);
-
-      team = this.player.team;
-
-      this.player.x = TEAM[team - 1].x;
-      this.player.y = TEAM[team - 1].y;
-      const INDENT = 60;
-      var count = 1;
-      var x;
-
-      Object.keys(this.allPlayers).forEach((id) => {
-        console.log(id);
-        if (this.allPlayers[id] && id != this.player.id) {
-          // set position based on team.
-          const player = this.allPlayers[id];
-
-          count += 1;
-          var indent;
-          if (player.team == 1) {
-            indent = INDENT * (count / 2);
-          } else {
-            indent = -INDENT * (count / 2);
-          }
-
-          console.log("team:" + team + "indent:" + indent);
-
-          //write to DB:
-          firebase
-            .database()
-            .ref("players/" + player.id)
-            .update({
-              team: player.team,
-              x: TEAM[team - 1].x + indent,
-              y: TEAM[team - 1].y,
-              xVel: 0,
-              yVel: 0,
-              angle: 0,
-              forceExceptionalUpdate: true,
-            });
-        }
-      });
-
-      // Spawn players
-    }
-    gameState = GAME_STATE_PLAYING;
+    gameState = State.PLAYING;
   }
 
   closestPlayer() {
@@ -1326,6 +1409,7 @@ class Game extends Phaser.Scene {
   }
 
   removeAllPlayers(that) {
+    console.log("removeAllPlayers()");
     firebase
       .database()
       .ref("players/")
@@ -1389,14 +1473,14 @@ class Game extends Phaser.Scene {
       TEAM[1].score = data.scores[1];
 
       this.updateScores();
-      if (data.gameState == GAME_STATE_POINT) {
+      if (data.gameState == State.POINT) {
         this.endRoundEveryone(data.teamThatScored);
       }
     }
   }
 
-  updateObjects(data) {
-    //console.log("updateObjects");
+  updateBall(data) {
+    //console.log("updateBall");
     if (!data) return;
 
     //Update each ojbect
@@ -1419,20 +1503,23 @@ class Game extends Phaser.Scene {
           //console.log("ball yvel:" + balls[0].body.velocity.y);
         }
       }
-
-      if (GAME_TYPE == "CAPTURE_THE_FLAG") {
-        //flag
-        if (id == flag1.id || id == flag2.id) {
-          const incomingData = data[id];
-
-          var flag = id == flag1.id ? flag1 : flag2;
-          flag.x = incomingData.x;
-          flag.y = incomingData.y;
-
-          //console.log("ball yvel:" + balls[0].body.velocity.y);
-        }
-      }
     });
+  }
+
+  updateFlag(flagID, data) {
+    console.log("upateFlag:" + flagID);
+    if (GAME_TYPE == "CAPTURE_THE_FLAG") {
+      //flag
+
+      if (flagID == flag1.id || flagID == flag2.id) {
+        var flag = id == flag1.id ? flag1 : flag2;
+
+        flag.x = data.x;
+        flag.y = data.y;
+
+        //console.log("ball yvel:" + balls[0].body.velocity.y);
+      }
+    }
   }
 
   updatePlayers(data) {
@@ -1461,6 +1548,8 @@ class Game extends Phaser.Scene {
         if (incomingData.forceExceptionalUpdate == true) {
           console.log("update me! team:" + incomingData.team);
           this.updatePlayer(this.player, incomingData);
+
+          grabbed = null;
           firebase
             .database()
             .ref("players/" + this.player.id)
@@ -1489,6 +1578,15 @@ class Game extends Phaser.Scene {
   updatePlayer(player, incomingData) {
     //Update all existing players - name and death
     this.updatePlayerNameDeathAndStuff(player, incomingData);
+
+    // console.log(
+    //   "updatePlayer:" +
+    //     player.id +
+    //     " team was:" +
+    //     player.team +
+    //     " team new:" +
+    //     incomingData.team
+    // );
 
     player.x = incomingData.x;
     player.y = incomingData.y;
