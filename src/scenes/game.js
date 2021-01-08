@@ -143,21 +143,6 @@ class Game extends Phaser.Scene {
 
     gfx = this.add.graphics();
 
-    //Create or join game
-    if (window.gameJoinMode == GAMEJOINMODE.JOIN) {
-      gameCode = document.getElementById("joinGameCode").value;
-      console.log("JOIN GAME:" + gameCode);
-      //TODO check if game is valid.
-    } else if (window.gameJoinMode == GAMEJOINMODE.CREATE) {
-      gameCode = this.makeid(3);
-      console.log("CREATE NEW GAME:" + gameCode);
-    } else {
-      console.log("No valid game join mode.");
-    }
-
-    const codeEl = document.getElementById(GAMECODE_ELEMENT_ID);
-    codeEl.innerText = gameCode;
-
     //enable multitouch.
     this.input.addPointer(3);
 
@@ -255,7 +240,17 @@ class Game extends Phaser.Scene {
 
     //Handle changing player name with input field.
 
-    const randomID = Math.random().toString().split(".")[1].substring(0, 3);
+    const playerID = Math.random().toString().split(".")[1].substring(0, 3);
+
+    //Create or join game
+    if (window.gameJoinMode == GAMEJOINMODE.JOIN) {
+      isGameMaster = false;
+      //TODO check if game is valid.
+    } else if (window.gameJoinMode == GAMEJOINMODE.CREATE) {
+      isGameMaster = true;
+    } else {
+      console.log("No valid game join mode.");
+    }
 
     const elName = document.getElementById(NAME_ELEMENT_ID);
 
@@ -269,7 +264,7 @@ class Game extends Phaser.Scene {
       }
     }
     //TODO - during development easiest to have these names.
-    nameFromCookie = "N-" + randomID;
+    nameFromCookie = "N-" + playerID;
 
     elName.oninput = (event) => {
       this.playerName = event.target.value;
@@ -304,8 +299,9 @@ class Game extends Phaser.Scene {
       y: TEAM[team].y,
       isDead: false,
       isImposter: false,
+      isGameMaster: isGameMaster,
       team: 1,
-      id: randomID,
+      id: playerID,
     };
     this.player = {};
     this.player.id = playerData.id;
@@ -315,6 +311,23 @@ class Game extends Phaser.Scene {
 
     //Push player to firebase
     this.pushThisPlayerToFirebase();
+
+    if (window.gameJoinMode == GAMEJOINMODE.JOIN) {
+      gameCode = document.getElementById("joinGameCode").value;
+      console.log("JOIN GAME:" + gameCode);
+      isGameMaster = false;
+      //TODO check if game is valid.
+    } else if (window.gameJoinMode == GAMEJOINMODE.CREATE) {
+      gameCode = this.makeid(3);
+      console.log("CREATE NEW GAME:" + gameCode);
+      isGameMaster = true;
+      this.fullReset(this);
+    } else {
+      console.log("No valid game join mode.");
+    }
+
+    const codeEl = document.getElementById(GAMECODE_ELEMENT_ID);
+    codeEl.innerText = gameCode;
 
     // this.player.setOnCollide(function (collisionData) {
     //   console.log("player collided.");
@@ -493,8 +506,12 @@ class Game extends Phaser.Scene {
       }
 
       if (gameObject.id == "lobby-screen") {
-        //if (isGameMaster) {
-        console.log("Lobby!");
+        console.log("Lobby Click!");
+        if (isGameMaster) {
+          console.log("I hear you GameMaster. Reset!");
+          gameObject.destroy();
+          that.resetGame(that);
+        }
         // console.log(that);
         // //console.log(gameObject);
         // //TODO add timeout.
@@ -549,6 +566,7 @@ class Game extends Phaser.Scene {
         id: this.player.id,
         team: this.player.team,
         playerName: this.playerName,
+        isGameMaster: isGameMaster,
       });
   }
 
@@ -576,7 +594,7 @@ class Game extends Phaser.Scene {
   }
   createLobby() {
     var msg1 = "Lobby";
-    var msg2 = "Lobby";
+    var msg2 = "-";
     var msg3 = "-";
     var backColor = 0xffffff;
     var borderColor = 0xffff99;
@@ -592,10 +610,16 @@ class Game extends Phaser.Scene {
     var label1 = this.add.text(0, -30, msg1, style);
     label1.setOrigin(0.5);
 
-    style = { font: "24px Arial", fill: "#666" };
+    style = { font: "20px Arial", fill: "#666" };
 
+    if (isGameMaster) {
+      msg2 = "UR Gamemaster. Click to start game.";
+    } else {
+      msg2 = "Waiting for Gamemaster to start game";
+    }
     var label2 = this.add.text(0, 10, msg2, style);
     label2.setOrigin(0.5);
+
     var label3 = this.add.text(0, 20, msg3, style);
     label3.setOrigin(0.5, 0);
 
@@ -1306,6 +1330,7 @@ class Game extends Phaser.Scene {
     newPlayer.jumpSensor = jumpSensor;
     newPlayer.type = "PLAYER";
     newPlayer.playerName = name;
+    newPlayer.isGameMaster = playerData.isGameMaster;
 
     return newPlayer;
   }

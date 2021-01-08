@@ -36,5 +36,9 @@ ResetRoundShared
 
 Set Positions based on teams.
 
+How to end?
+
 Global Data:
 https://stackoverflow.com/questions/63213325/phaser-3-share-custom-object-data-between-scenes
+
+Musiclily 6mm Tremolo Arm Whammy Bar Vibrato Arm for Electric Guitar, Chrome with White Tip
