@@ -11,7 +11,14 @@ const HAS_BLOCKS = false;
 const GAME_TYPE = "CAPTURE_THE_FLAG";
 // "BASKETBALL", "CAPTURE_THE_FLAG"
 
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+
+const gameCode = "rty";
+
 const State = {
+  CLEAR: "CLEAR",
+  RESET: "RESET",
   LOBBY: "LOBBY",
   PREGAME: "PREGAME",
   PLAYING: "PLAYING",
@@ -21,9 +28,6 @@ const State = {
 };
 
 const NAME_ELEMENT_ID = "playerName";
-
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 600;
 
 const GAME_POINT_SECONDS = 5;
 const SCORE_TO_WIN = 2;
@@ -56,6 +60,12 @@ var flag2;
 var isTouch = false;
 
 var grabbed = null;
+var screenRef = null;
+var lobbyScreenRef = null;
+var isGameMaster = false;
+var gameMasterID = null;
+
+var lobbyListRef = null;
 
 var scoreSign = [];
 
@@ -82,7 +92,7 @@ const SPAWN_FLAG = [
 class Game extends Phaser.Scene {
   constructor() {
     console.log("constructor");
-    super({ key: "Game" });
+    super({ key: "GameScene" });
 
     firebase.initializeApp(firebase_config);
     this.database = firebase.database();
@@ -220,6 +230,48 @@ class Game extends Phaser.Scene {
     //   }
     // });
 
+    //Handle changing player name with input field.
+
+    const randomID = Math.random().toString().split(".")[1].substring(0, 3);
+
+    const elName = document.getElementById(NAME_ELEMENT_ID);
+
+    var nameFromCookie = "";
+    if (document.cookie) {
+      var aCook = document.cookie.split("; ");
+
+      const pair = aCook.find((row) => row.startsWith("username"));
+      if (pair) {
+        nameFromCookie = pair.split("=")[1];
+      }
+    }
+    //TODO - during development easiest to have these names.
+    nameFromCookie = "N-" + randomID;
+
+    elName.oninput = (event) => {
+      this.playerName = event.target.value;
+      const name = this.getName(this.playerName, this.player);
+      this.player.labelRef.setText(name);
+      this.updateLobbyList();
+
+      document.cookie = "username=" + event.target.value;
+
+      firebase
+        .database()
+        .ref(gameCode + "/players/" + this.player.id)
+        .update({
+          playerName: this.playerName,
+        });
+    };
+
+    if (nameFromCookie) {
+      elName.value = nameFromCookie;
+
+      this.playerName = nameFromCookie;
+      const name = this.getName(this.playerName, this.player);
+      //this.player.labelRef.setText(name);
+    }
+
     // // Create Player
     var team = 1;
 
@@ -230,13 +282,16 @@ class Game extends Phaser.Scene {
       isDead: false,
       isImposter: false,
       team: 1,
-      id: Math.random().toString().split(".")[1],
+      id: randomID,
     };
     this.player = {};
     this.player.id = playerData.id;
 
     this.playerSprite = this.add.sprite(0, 0, "dude");
     this.player = this.createPlayer(playerData, this.playerSprite, true);
+
+    //Push player to firebase
+    this.pushThisPlayerToFirebase();
 
     // this.player.setOnCollide(function (collisionData) {
     //   console.log("player collided.");
@@ -267,66 +322,38 @@ class Game extends Phaser.Scene {
 
     // Other playcers
 
-    var thisPlayerRef = firebase.database().ref("players/" + this.player.id);
+    var thisPlayerRef = firebase
+      .database()
+      .ref(gameCode + "/players/" + this.player.id);
     thisPlayerRef.onDisconnect().set({});
 
     //Handle player events from Firebase.
-    var playersRef = firebase.database().ref("players");
+    var playersRef = firebase.database().ref(gameCode + "/players");
     playersRef.on("value", (snapshot) => {
       this.updatePlayers(snapshot.val());
     });
 
     //Handle object events from Firebase.
-    var objectsRef = firebase.database().ref("objects/ball");
+    var objectsRef = firebase.database().ref(gameCode + "/objects/ball");
     objectsRef.on("value", (snapshot) => {
       this.updateBall(snapshot.val());
     });
 
-    var objectsRef = firebase.database().ref("objects/flag_1");
+    var objectsRef = firebase.database().ref(gameCode + "/objects/flag_1");
     objectsRef.on("value", (snapshot) => {
       this.updateFlag("flag_1", snapshot.val());
     });
 
-    var objectsRef = firebase.database().ref("objects/flag_2");
+    var objectsRef = firebase.database().ref(gameCode + "/objects/flag_2");
     objectsRef.on("value", (snapshot) => {
       this.updateFlag("flag_2", snapshot.val());
     });
 
     //Handle 'meta' events from Firebase.
-    var metaRef = firebase.database().ref("meta");
+    var metaRef = firebase.database().ref(gameCode + "/meta");
     metaRef.on("value", (snapshot) => {
       this.updateMeta(snapshot.val());
     });
-
-    //Handle changing player name with input field.
-
-    const elName = document.getElementById(NAME_ELEMENT_ID);
-
-    var nameFromCookie = "";
-    if (document.cookie) {
-      var aCook = document.cookie.split("; ");
-
-      const pair = aCook.find((row) => row.startsWith("username"));
-      if (pair) {
-        nameFromCookie = pair.split("=")[1];
-      }
-    }
-
-    elName.oninput = (event) => {
-      this.playerName = event.target.value;
-      const name = this.getName(this.playerName, this.player);
-      this.player.labelRef.setText(name);
-
-      document.cookie = "username=" + event.target.value;
-    };
-
-    if (nameFromCookie) {
-      elName.value = nameFromCookie;
-
-      this.playerName = nameFromCookie;
-      const name = this.getName(this.playerName, this.player);
-      this.player.labelRef.setText(name);
-    }
 
     var that = this;
 
@@ -361,7 +388,7 @@ class Game extends Phaser.Scene {
       if (that.keyboardOK(event)) {
         console.log("Hello from the T Key!");
 
-        that.removeAllPlayers(that);
+        that.fullReset(that);
       }
     });
 
@@ -427,10 +454,38 @@ class Game extends Phaser.Scene {
     buttonGrab.isPressed = false;
 
     this.input.on("gameobjectdown", function (pointer, gameObject) {
+      console.log(gameObject.id);
+
+      if (gameObject.id == "win-screen") {
+        if (isGameMaster) {
+          console.log("Start new game!");
+          console.log(that);
+          //console.log(gameObject);
+          //TODO add timeout.
+          gameObject.destroy();
+          that.resetGame(that);
+        }
+
+        return;
+      }
+
+      if (gameObject.id == "lobby-screen") {
+        //if (isGameMaster) {
+        console.log("Lobby!");
+        // console.log(that);
+        // //console.log(gameObject);
+        // //TODO add timeout.
+        // gameObject.destroy();
+        // that.resetGame(that);
+        //}
+
+        return;
+      }
+
       if (gameState != State.PLAYING) return;
 
       //console.log(gameObject);
-      console.log(gameObject.id);
+
       gameObject.setFillStyle(0x0000ff);
       gameObject.isPressed = true;
       if (gameObject.id == "up") {
@@ -441,6 +496,12 @@ class Game extends Phaser.Scene {
     });
 
     this.input.on("gameobjectup", function (pointer, gameObject) {
+      if (gameObject.id == "win-screen") {
+        return;
+      }
+      if (gameObject.id == "lobby-screen") {
+        return;
+      }
       if (gameState != State.PLAYING) return;
       console.log(gameObject.id + " up");
       gameObject.setFillStyle(0x000099);
@@ -451,6 +512,101 @@ class Game extends Phaser.Scene {
     });
 
     //Testing this.endRound(1);
+    //this.showWinScreen(1);
+    this.createLobby();
+    this.updateLobbyList();
+    gameState = State.LOBBY;
+  }
+
+  pushThisPlayerToFirebase() {
+    firebase
+      .database()
+      .ref(gameCode + "/players/" + this.player.id)
+      .set({
+        id: this.player.id,
+        team: this.player.team,
+        playerName: this.playerName,
+      });
+  }
+
+  updateLobbyList() {
+    if (lobbyListRef) {
+      var list = "";
+      list =
+        list +
+        this.player.playerName +
+        (this.player.id == gameMasterID ? " (GM)" : "") +
+        "\n";
+
+      var that = this;
+      Object.keys(that.allPlayers).forEach((id) => {
+        if (that.allPlayers[id] && id != that.player.id) {
+          var pName = that.allPlayers[id].playerName;
+          list = list + pName + (id == gameMasterID ? " (GM)" : "") + "\n";
+        }
+      });
+      //console.log("lobby: " + list);
+      //console.log("all:");
+      //console.log(that.allPlayers);
+      lobbyListRef.setText(list);
+    }
+  }
+  createLobby() {
+    var msg1 = "Lobby";
+    var msg2 = "Lobby";
+    var msg3 = "-";
+    var backColor = 0xffffff;
+    var borderColor = 0xffff99;
+    var board = this.add.rectangle(0, 0, 500, 200, backColor);
+    board.setStrokeStyle(4, borderColor);
+    //board.setInteractive();
+    //board.id = "lobby-screen";
+
+    var style;
+
+    style = { font: "32px Arial", fill: "#000" };
+
+    var label1 = this.add.text(0, -30, msg1, style);
+    label1.setOrigin(0.5);
+
+    style = { font: "24px Arial", fill: "#666" };
+
+    var label2 = this.add.text(0, 10, msg2, style);
+    label2.setOrigin(0.5);
+    var label3 = this.add.text(0, 20, msg3, style);
+    label3.setOrigin(0.5, 0);
+
+    var group = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT / 2, [
+      board,
+      label1,
+      label2,
+      label3,
+    ]);
+
+    group.label3 = label3;
+    group.setSize(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+    group.setInteractive();
+    group.id = "lobby-screen";
+    lobbyListRef = label3;
+
+    lobbyScreenRef = group; //so we can destroy it.
+
+    return group;
+  }
+
+  //a full reset was called. wipe the players.
+  clearThisClient() {
+    console.log("clearThisClient()");
+
+    Object.keys(this.allPlayers).forEach((id) => {
+      //this.allPlayers[id].body.destroy();
+      //this.matter.world.remove(this.allPlayers[id].body);
+      this.allPlayers[id].destroy();
+    });
+    this.allPlayers = {};
+
+    this.updateLobbyList();
+    this.pushThisPlayerToFirebase();
   }
 
   //////// update() is a special hook, called by Phaser3 engine. ///////////
@@ -499,7 +655,7 @@ class Game extends Phaser.Scene {
 
         var fieldSide = Math.round(this.player.x / GAME_WIDTH) + 1;
         if (fieldSide == this.player.team) {
-          console.log("win the flag!");
+          console.log("got the flag to my side!");
           this.endRound(this.player.team);
         }
       }
@@ -517,7 +673,7 @@ class Game extends Phaser.Scene {
       //console.log("send animation:" + this.playerSprite.anims.currentAnim.key);
       firebase
         .database()
-        .ref("players/" + this.player.id)
+        .ref(gameCode + "/players/" + this.player.id)
         .update({
           id: this.player.id,
           team: this.player.team,
@@ -546,30 +702,48 @@ class Game extends Phaser.Scene {
   showPointScreen(team) {
     var msg1 = TEAM[team - 1].name + " scored!";
     var msg2 = "Next round starts soon";
+    var msg3 = "-";
     var backColor = 0xffffff;
     var borderColor = 0x666666;
-    return this.showScreen(team, msg1, msg2, backColor, borderColor, true);
+    return this.showScreen(
+      team,
+      msg1,
+      msg2,
+      msg3,
+      backColor,
+      borderColor,
+      true
+    );
   }
 
   showWinScreen(team) {
     var msg1 = TEAM[team - 1].name + "  WINS!";
-    var msg2 = "Congratulations! Click to start a new game.";
+    var msg2 = "Congratulations! Gamemaster click to start new.";
+    var msg3 = "-";
     var backColor = 0xffffff;
     var borderColor = 0xffff99;
     var screen = this.showScreen(
       team,
       msg1,
       msg2,
+      msg3,
       backColor,
       borderColor,
       false
     );
+
+    //handle clicks.
+    screen.setInteractive();
+    screen.id = "win-screen";
+
     return screen;
   }
 
-  showScreen(team, msg1, msg2, backColor, borderColor, isCountdown) {
+  showScreen(team, msg1, msg2, msg3, backColor, borderColor, isCountdown) {
     var board = this.add.rectangle(0, 0, 500, 200, backColor);
     board.setStrokeStyle(4, borderColor);
+    //board.setInteractive();
+    board.id = "screen";
 
     var style;
 
@@ -582,11 +756,14 @@ class Game extends Phaser.Scene {
 
     var label2 = this.add.text(0, 10, msg2, style);
     label2.setOrigin(0.5);
+    var label3 = this.add.text(0, 20, msg3, style);
+    label3.setOrigin(0.5);
 
     var group = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT / 2, [
       board,
       label1,
       label2,
+      label3,
     ]);
 
     var intervalRef;
@@ -599,6 +776,10 @@ class Game extends Phaser.Scene {
     }
 
     group.intervalRef = intervalRef;
+    group.label3 = label3;
+    group.setSize(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+    group.setInteractive();
+    screenRef = group;
     return group;
   }
 
@@ -622,35 +803,37 @@ class Game extends Phaser.Scene {
     //this.updateScores();
     firebase
       .database()
-      .ref("meta/")
+      .ref(gameCode + "/meta/")
       .update({
         scores: [TEAM[0].score, TEAM[1].score],
         teamThatScored: team,
         gameState: gameState,
       });
 
-    this.endRoundEveryone(team);
+    this.resetRound(this);
   }
 
   //Things that all devices must do.
   endRoundEveryone(team) {
-    console.log("endRoundEveryone");
+    const score = TEAM[team - 1].score;
+    console.log("endRoundEveryone() SCORE:" + score);
     var screen;
     grabbed = null;
     this.playerSprite.anims.play("turn"); //stop running.
 
-    if (TEAM[team - 1].score >= SCORE_TO_WIN) {
+    var that = this;
+
+    if (score >= SCORE_TO_WIN) {
       screen = this.showWinScreen(team);
     } else {
       screen = this.showPointScreen(team);
-    }
 
-    var that = this;
-    setTimeout(function () {
-      clearInterval(screen.intervalRef);
-      screen.destroy();
-      that.resetRound(that);
-    }, GAME_POINT_SECONDS * 1000);
+      setTimeout(function () {
+        clearInterval(screen.intervalRef);
+        screen.destroy();
+        //Only 'lead' device should run this - that.resetRound(that);
+      }, GAME_POINT_SECONDS * 1000);
+    }
   }
 
   actionLeft(that) {}
@@ -855,7 +1038,7 @@ class Game extends Phaser.Scene {
     if (gameState != State.PLAYING) return;
     firebase
       .database()
-      .ref("objects/" + ball.id)
+      .ref(gameCode + "/objects/" + ball.id)
       .update({
         id: ball.id,
 
@@ -874,7 +1057,7 @@ class Game extends Phaser.Scene {
     console.log("sendFlag: " + flag.id);
     firebase
       .database()
-      .ref("objects/" + flag.id)
+      .ref(gameCode + "/objects/" + flag.id)
       .update({
         x: Math.round(flag.x),
         y: Math.round(flag.y),
@@ -1099,6 +1282,7 @@ class Game extends Phaser.Scene {
     newPlayer.id = playerData.id;
     newPlayer.jumpSensor = jumpSensor;
     newPlayer.type = "PLAYER";
+    newPlayer.playerName = name;
 
     return newPlayer;
   }
@@ -1106,26 +1290,35 @@ class Game extends Phaser.Scene {
   getName(name, p) {
     var name2 = name;
 
-    if (IS_IMPOSTER) {
-      //only show imposter if its the current player.
-      var name2 = name + (p.isDead ? " - DEAD" : "");
-      if (p.id == this.player.id) {
-        name2 = name2 + (p.isImposter ? " - IMPOSTER" : "");
+    if (p) {
+      if (IS_IMPOSTER) {
+        //only show imposter if its the current player.
+        var name2 = name + (p.isDead ? " - DEAD" : "");
+        if (p.id == this.player.id) {
+          name2 = name2 + (p.isImposter ? " - IMPOSTER" : "");
+        }
       }
+      name2 += " - " + p.team;
     }
-    name2 += " - " + p.team;
 
     return name2;
   }
 
   resetGame(that) {
-    console.log("resetGame");
+    console.log("resetGame()");
+
+    if (that.player.id != gameMasterID) {
+      console.log("Must be GameMaser to start a round!");
+      return;
+    }
 
     if (GAME_TYPE == "CAPTURE_THE_FLAG") {
       gameState = State.PREP_ROUND;
+      isGameMaster = true;
+
       firebase
         .database()
-        .ref("meta/")
+        .ref(gameCode + "/meta/")
         .set({
           scores: [0, 0],
           gameMaster: this.player.id,
@@ -1162,9 +1355,12 @@ class Game extends Phaser.Scene {
 
     // Block all input.
     gameState = State.PREP_ROUND;
-    firebase.database().ref("meta/").set({
-      gameState: State.PREP_ROUND,
-    });
+    firebase
+      .database()
+      .ref(gameCode + "/meta/")
+      .set({
+        gameState: State.PREP_ROUND,
+      });
 
     setTimeout(function () {
       that.resetRoundShared(that);
@@ -1216,7 +1412,7 @@ class Game extends Phaser.Scene {
       //     const player = this.allPlayers[id];
       //     firebase
       //       .database()
-      //       .ref("players/" + player.id)
+      //       .ref(gameCode + "/players/" + player.id)
       //       .update({
       //         blockInput: true,
       //       });
@@ -1225,7 +1421,7 @@ class Game extends Phaser.Scene {
 
       // Block all input.
       // gameState = State.PREP_ROUND;
-      // firebase.database().ref("meta/").set({
+      // firebase.database().ref(gameCode + "/meta/").set({
       //   gameState: State.PREP_ROUND,
       // });
 
@@ -1255,24 +1451,34 @@ class Game extends Phaser.Scene {
           } else {
             indent = -INDENT * (count / 2);
           }
+          var newX = TEAM[player.team - 1].x + indent;
 
           console.log(
-            "player:" + player.id + " team:" + player.team + " indent:" + indent
+            "p:" +
+              player.id +
+              " team:" +
+              player.team +
+              " indent:" +
+              indent +
+              " x:" +
+              newX
           );
           //console.log("resetRound for p:" + player.id);
           //write to DB:
           firebase
             .database()
-            .ref("players/" + player.id)
+            .ref(gameCode + "/players/" + player.id)
             .update({
               team: player.team,
-              x: TEAM[team - 1].x + indent,
-              y: TEAM[team - 1].y,
+              x: newX,
+              y: TEAM[player.team - 1].y,
               xVel: 0,
               yVel: 0,
               angle: 0,
               forceExceptionalUpdate: true,
             });
+
+          this.startRound();
         }
       });
       // }, 1000);
@@ -1289,7 +1495,7 @@ class Game extends Phaser.Scene {
       allKeys.forEach((id) => {
         firebase
           .database()
-          .ref("players/" + id)
+          .ref(gameCode + "/players/" + id)
           .update({
             isDead: false,
             isImposter: false,
@@ -1307,13 +1513,23 @@ class Game extends Phaser.Scene {
 
       firebase
         .database()
-        .ref("players/" + id)
+        .ref(gameCode + "/players/" + id)
         .update({
           isImposter: true,
         });
     }
 
-    gameState = State.PLAYING;
+    //gameState = State.PLAYING;
+  }
+
+  startRound() {
+    console.log("startRound()");
+    firebase
+      .database()
+      .ref(gameCode + "/meta/")
+      .update({
+        gameState: State.PLAYING,
+      });
   }
 
   closestPlayer() {
@@ -1341,7 +1557,7 @@ class Game extends Phaser.Scene {
   killPlayer2(id) {
     firebase
       .database()
-      .ref("players/" + id)
+      .ref(gameCode + "/players/" + id)
       .update({
         isDead: true,
       })
@@ -1361,7 +1577,7 @@ class Game extends Phaser.Scene {
     }
     firebase
       .database()
-      .ref("players/" + this.player.id)
+      .ref(gameCode + "/players/" + this.player.id)
       .update({
         team: this.player.team,
       })
@@ -1408,21 +1624,70 @@ class Game extends Phaser.Scene {
     } //is imposter
   }
 
-  removeAllPlayers(that) {
-    console.log("removeAllPlayers()");
+  // removeAllPlayers(that) {
+  //   console.log("removeAllPlayers()");
+
+  //   firebase
+  //     .database()
+  //     .ref(gameCode + "/players/")
+  //     .set({})
+  //     .then(function () {})
+  //     .catch(function (error) {});
+
+  //   firebase
+  //     .database()
+  //     .ref(gameCode + "/objects/")
+  //     .set({})
+  //     .then(function () {})
+  //     .catch(function (error) {});
+  // }
+
+  //wipe out all players and ensure that they wipe out their game state.
+  fullReset(that) {
+    console.log("fullReset()");
+
+    //broadcast to all playes.
     firebase
       .database()
-      .ref("players/")
-      .set({})
+      .ref(gameCode)
+      .set({
+        meta: {
+          gameState: State.CLEAR,
+          gameMaster: this.player.id,
+          scores: [0, 0],
+        },
+      })
       .then(function () {})
       .catch(function (error) {});
 
-    firebase
-      .database()
-      .ref("objects/")
-      .set({})
-      .then(function () {})
-      .catch(function (error) {});
+    //clear out other players!
+    // firebase
+    //   .database()
+    //   .ref(gameCode)
+    //   .set({
+    //     meta: {
+    //       gameState: State.RESET,
+    //       gameMaster: this.player.id,
+    //       scores: [0, 0],
+    //     },
+    //   })
+    //   .then(function () {})
+    //   .catch(function (error) {});
+
+    // firebase
+    //   .database()
+    //   .ref(gameCode + "/meta/")
+    //   .set({
+    //     gameState: gameState,
+    //   }).then(function () {})
+    //   .catch(function (error) {});
+
+    // firebase
+    //   .database()
+    //   .ref(gameCode)
+    //   .set({})
+    //   .then(function () {})
+    //   .catch(function (error) {});
   }
 
   getRandomInt(min, max) {
@@ -1432,7 +1697,7 @@ class Game extends Phaser.Scene {
   }
 
   updatePlayerLabel(playerName, labelRef, player) {
-    console.log("updatePlayerLabel:" + playerName + " - " + player.team);
+    //console.log("updatePlayerLabel:" + playerName + " - " + player.team);
     var name = this.getName(playerName, player);
     labelRef.setText(name);
 
@@ -1462,18 +1727,41 @@ class Game extends Phaser.Scene {
   }
 
   updateMeta(data) {
-    console.log("updateMeta");
+    console.log("updateMeta() is:" + gameState + " new:" + data.gameState);
     if (!data) return;
 
-    //Update each ojbect
-    const ball = balls[0];
+    gameMasterID = data.gameMaster;
+    if (data.gameMaster == this.player.id) {
+      isGameMaster = true;
+    } else {
+      isGameMaster = false;
+    }
+
+    if (gameState != State.PLAYING) {
+      if (data.gameState == State.PLAYING) {
+        console.log("updateMeta Start Playing!");
+        gameState = State.PLAYING;
+        grabbed = null;
+        screenRef && screenRef.destroy();
+        lobbyScreenRef && lobbyScreenRef.destroy();
+      }
+    }
+
+    gameState = data.gameState;
+
+    if (data.gameState == State.CLEAR) {
+      this.clearThisClient();
+      return;
+    }
 
     if (GAME_TYPE == "BASKETBALL" || GAME_TYPE == "CAPTURE_THE_FLAG") {
-      TEAM[0].score = data.scores[0];
-      TEAM[1].score = data.scores[1];
+      if (data.scores) {
+        TEAM[0].score = data.scores[0];
+        TEAM[1].score = data.scores[1];
 
-      this.updateScores();
-      if (data.gameState == State.POINT) {
+        this.updateScores();
+      }
+      if (data.gameState == State.POINT || data.gameState == State.GAMEOVER) {
         this.endRoundEveryone(data.teamThatScored);
       }
     }
@@ -1507,12 +1795,13 @@ class Game extends Phaser.Scene {
   }
 
   updateFlag(flagID, data) {
-    console.log("upateFlag:" + flagID);
+    if (!data) return;
+    console.log("upateFlag:" + flagID + " d:" + data);
     if (GAME_TYPE == "CAPTURE_THE_FLAG") {
       //flag
 
       if (flagID == flag1.id || flagID == flag2.id) {
-        var flag = id == flag1.id ? flag1 : flag2;
+        var flag = flagID == flag1.id ? flag1 : flag2;
 
         flag.x = data.x;
         flag.y = data.y;
@@ -1526,12 +1815,14 @@ class Game extends Phaser.Scene {
     //console.log("updatePlayers");
 
     if (!data) return;
+
     //Update current player (died?)
     this.updatePlayerNameDeathAndStuff(this.player, data[this.player.id]);
 
     //Unregister missing players
     Object.keys(this.allPlayers).forEach((id) => {
       if (!data[id]) {
+        console.log("updatePlayers - DESTROY:" + id);
         this.allPlayers[id].destroy();
       }
     });
@@ -1547,12 +1838,13 @@ class Game extends Phaser.Scene {
         //rare - does it cause loops, when we update the current player?
         if (incomingData.forceExceptionalUpdate == true) {
           console.log("update me! team:" + incomingData.team);
+
           this.updatePlayer(this.player, incomingData);
 
           grabbed = null;
           firebase
             .database()
-            .ref("players/" + this.player.id)
+            .ref(gameCode + "/players/" + this.player.id)
             .update({
               forceExceptionalUpdate: false,
             });
@@ -1563,21 +1855,40 @@ class Game extends Phaser.Scene {
         const player = this.allPlayers[id];
         this.updatePlayer(player, incomingData);
       } else if (!this.allPlayers[id] && id != this.player.id) {
-        // CREATE New PLAYERS
+        // ADD New PLAYERS
         if (IS_MULTIPLAYER) {
           const playerData = data[id];
+          console.log(
+            "updatePlayers - ADD! id:" + id + " name:" + playerData.playerName
+          );
           var mSprite = this.add.sprite(0, 0, "dude");
+          console.log(playerData);
+
           var newPlayer = this.createPlayer(playerData, mSprite, false);
           this.allPlayers[id] = newPlayer;
+          //console.log("allPlayers length:" + this.allPlayers.l)
+          console.log(this.allPlayers);
         }
       } else {
       }
+
+      this.updateLobbyList();
     });
   }
 
   updatePlayer(player, incomingData) {
+    // console.log(
+    //   "updatePlayer:" + player.id + " x:" + player.x + " ix:" + incomingData.x
+    // );
+    if (!incomingData.x) {
+      console.log("BAD UPDATE. SKIP.");
+      return;
+    }
+
     //Update all existing players - name and death
     this.updatePlayerNameDeathAndStuff(player, incomingData);
+
+    //console.log(player);
 
     // console.log(
     //   "updatePlayer:" +

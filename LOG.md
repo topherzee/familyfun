@@ -1,5 +1,13 @@
 Having trouble with anthentication - tried creating a service account.
 
+WORKING !
+Start in Lobby
+Start with T to reset players
+Then R to start game:
+TODO - After a WIN - it should wait for a click from GameMaster.
+
+https://console.firebase.google.com/project/familyfun-d8dec/database/familyfun-d8dec/data
+
 {
 "rules": {
 ".read": true,
@@ -27,3 +35,6 @@ Block input - so noone can move.
 ResetRoundShared
 
 Set Positions based on teams.
+
+Global Data:
+https://stackoverflow.com/questions/63213325/phaser-3-share-custom-object-data-between-scenes
