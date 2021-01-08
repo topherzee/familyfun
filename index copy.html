@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/phaser@3.15.1/dist/phaser-arcade-physics.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.24.1/dist/phaser.min.js"></script>
+
+      <!-- Firebase App (the core Firebase SDK) is always required and must be listed first -->
+  <script src="https://www.gstatic.com/firebasejs/8.2.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.2.1/firebase-database.js"></script>
+
+<style>
+  body{
+    font-family: sans-serif;
+  }
+
+</style>
+
+<meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=0.5, width=device-width, 
+    user-scalable=no">
+    <meta name="full-screen" content="yes" />
+    <meta name="screen-orientation" content="landscape" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    
+    <meta name="mobile-web-app-capable" content="yes">
+    <style>
+      html, 
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+    </style>
+
+</head>
+<body>
+
+    <div>
+        Family Fun - Your Name: <input id="playerName" /> - 
+        <button id="newGame" type="button" onclick="onNewGame()">Create Game</button>
+      </div>
+
+
+
+
+      <script type="module">
+
+
+
+
+        import GameScene from "./src/scenes/game.js";
+        //import LobbyScene from "./src/scenes/lobby.js";
+        
+        
+        
+            var config = {
+                type: Phaser.AUTO,
+                width: 800,
+                height: 600,
+                physics: {
+            default: "matter",
+        
+            matter: {
+              gravity: {
+                 x: 0,
+                y: 0.4,
+              },
+              debugDISABLE: {
+                showAxes: false,
+                showAngleIndicator: true,
+                angleColor: 0xe81153,
+        
+                showBroadphase: false,
+                broadphaseColor: 0xffb400,
+        
+                showBounds: false,
+                boundsColor: 0xffffff,
+        
+                showVelocity: true,
+                velocityColor: 0x00aeef,
+        
+                showCollisions: true,
+                collisionColor: 0xf5950c,
+        
+                showSeparations: false,
+                separationColor: 0xffa500,
+        
+                showBody: true,
+                showStaticBody: true,
+                showInternalEdges: true,
+        
+                renderFill: false,
+                renderLine: true,
+        
+                fillColor: 0x106909,
+                fillOpacity: 1,
+                lineColor: 0x28de19,
+                lineOpacity: 1,
+                lineThickness: 1,
+        
+                staticFillColor: 0x0d177b,
+                staticLineColor: 0x1327e4,
+        
+                showSleeping: true,
+                staticBodySleepOpacity: 1,
+                sleepFillColor: 0x464646,
+                sleepLineColor: 0x999a99,
+        
+                showSensors: true,
+                sensorFillColor: 0x0d177b,
+                sensorLineColor: 0x1327e4,
+        
+                showPositions: true,
+                positionSize: 4,
+                positionColor: 0xe042da,
+        
+                showJoint: true,
+                jointColor: 0xe0e042,
+                jointLineOpacity: 1,
+                jointLineThickness: 2,
+        
+                pinSize: 4,
+                pinColor: 0x42e0e0,
+        
+                springColor: 0xe042e0,
+        
+                anchorColor: 0xefefef,
+                anchorSize: 4,
+        
+                showConvexHulls: true,
+                hullColor: 0xd703d0,
+              },
+            },
+          },
+          scene: [GameScene],
+            };
+        
+
+            //(() => new Phaser.Game(config))();
+            //var game = new Phaser.Game(config);
+            </script>
+        
+
+      <script>
+
+function onNameChange(val){
+  console.log("new name:" + val)
+}
+ 
+function onNewGame(){
+  console.log("New game!")
+
+  var game = new Phaser.Game(config);
+  
+  //(() => new Phaser.Game(config))();
+
+}
+//var WEBGL_RENDERER = true
+var CANVAS_RENDERER = true
+    
+        //Firebase config
+var firebase_config = {
+  apiKey: "AIzaSyDwPOmo6jBoi4ZGkt09PB4IVXHnxwlXkqk",
+  authDomain: "familyfun-d8dec.firebaseapp.com",
+  databaseURL: "https://familyfun-d8dec.firebaseio.com",
+  projectId: "familyfun-d8dec",
+  storageBucket: "familyfun-d8dec.appspot.com",
+  messagingSenderId: "700818253828",
+  appId: "1:700818253828:web:62fdcbdc6911df8e0d6d51",
+};
+
+      </script>
+
+</body>
+</html>

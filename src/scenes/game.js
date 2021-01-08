@@ -14,7 +14,8 @@ const GAME_TYPE = "CAPTURE_THE_FLAG";
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 
-const gameCode = "rty";
+//var gameCode = "rty";
+var gameCode = "rty";
 
 const State = {
   CLEAR: "CLEAR",
@@ -27,10 +28,16 @@ const State = {
   GAMEOVER: "GAMEOVER",
 };
 
+const GAMEJOINMODE = {
+  JOIN: "JOIN",
+  CREATE: "CREATE",
+};
+
 const NAME_ELEMENT_ID = "playerName";
+const GAMECODE_ELEMENT_ID = "gameCode";
 
 const GAME_POINT_SECONDS = 5;
-const SCORE_TO_WIN = 2;
+const SCORE_TO_WIN = 3;
 
 //Firebase config
 var firebase_config = {
@@ -133,7 +140,23 @@ class Game extends Phaser.Scene {
 
   create() {
     console.log("create");
+
     gfx = this.add.graphics();
+
+    //Create or join game
+    if (window.gameJoinMode == GAMEJOINMODE.JOIN) {
+      gameCode = document.getElementById("joinGameCode").value;
+      console.log("JOIN GAME:" + gameCode);
+      //TODO check if game is valid.
+    } else if (window.gameJoinMode == GAMEJOINMODE.CREATE) {
+      gameCode = this.makeid(3);
+      console.log("CREATE NEW GAME:" + gameCode);
+    } else {
+      console.log("No valid game join mode.");
+    }
+
+    const codeEl = document.getElementById(GAMECODE_ELEMENT_ID);
+    codeEl.innerText = gameCode;
 
     //enable multitouch.
     this.input.addPointer(3);
@@ -1914,6 +1937,17 @@ class Game extends Phaser.Scene {
     if (incomingData.animation) {
       player.spriteRef.anims.play(incomingData.animation, true);
     }
+  }
+
+  makeid(length) {
+    var result = "";
+    //var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var characters = "abcdefghjkmnopqrstuvwxyz";
+    var charactersLength = characters.length;
+    for (var i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
   }
 }
 export default Game;
