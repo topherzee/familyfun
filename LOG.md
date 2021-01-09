@@ -1,6 +1,16 @@
 Having trouble with anthentication - tried creating a service account.
 
+Bug for robin on left getting stuck to the wall.
+Game needs to end properly.
+
 WORKING !
+Devmode -start automatically.
+Move around with 1 player - left & right.
+
+Ipad controls are too hard.
+Automatically grab flag.
+join a game already in progress? Or what should happen.
+
 Start in Lobby
 Start with T to reset players
 Then R to start game:

@@ -4,6 +4,10 @@ allPlayers does not include the local player.
 The local player must be always taken into account as well.
 */
 
+const GAME_POINT_SECONDS = 5;
+const SCORE_TO_WIN = 2;
+
+const FLAG_Y = 500;
 const IS_MULTIPLAYER = true;
 const IS_IMPOSTER = false;
 const HAS_BLOCKS = false;
@@ -35,9 +39,6 @@ const GAMEJOINMODE = {
 
 const NAME_ELEMENT_ID = "playerName";
 const GAMECODE_ELEMENT_ID = "gameCode";
-
-const GAME_POINT_SECONDS = 5;
-const SCORE_TO_WIN = 3;
 
 //Firebase config
 var firebase_config = {
@@ -81,6 +82,7 @@ var buttonRight = { isPressed: false };
 var buttonUp = { isPressed: false };
 var buttonGrab = { isPressed: false };
 
+const COLOR_BUTTON = 0x000066;
 const COLOR_1 = 0xff0000;
 const COLOR_2 = 0x6666ff;
 const COLOR_1_HEX = "#ff0000";
@@ -92,8 +94,8 @@ var TEAM = [
 ];
 
 const SPAWN_FLAG = [
-  { x: 150, y: 100 },
-  { x: 650, y: 100 },
+  { x: 150, y: FLAG_Y },
+  { x: 650, y: FLAG_Y },
 ];
 
 class Game extends Phaser.Scene {
@@ -147,6 +149,9 @@ class Game extends Phaser.Scene {
     this.input.addPointer(3);
 
     this.matter.world.setBounds();
+    //this.matter.world.walls.left.setFriction(0);
+    this.matter.world.walls.left.friction = 0;
+    //console.log(this.matter.world.walls.left);
 
     // add Sky background sprit
     this.add.image(400, 300, "sky");
@@ -313,7 +318,7 @@ class Game extends Phaser.Scene {
     this.pushThisPlayerToFirebase();
 
     if (window.gameJoinMode == GAMEJOINMODE.JOIN) {
-      gameCode = document.getElementById("joinGameCode").value;
+      gameCode = document.getElementById("joinGameCode").value.toLowerCase();
       console.log("JOIN GAME:" + gameCode);
       isGameMaster = false;
       //TODO check if game is valid.
@@ -462,35 +467,40 @@ class Game extends Phaser.Scene {
     //touch events.
     const BUTTON_ALPHA = 0.2;
     buttonRight = this.add
-      .circle(700, 500, 80, 0x000099)
+      .circle(700, 500, 80, COLOR_BUTTON)
       .setAlpha(BUTTON_ALPHA)
       .setInteractive();
     buttonRight.id = "right";
     buttonRight.isPressed = false;
 
     buttonLeft = this.add
-      .circle(500, 500, 80, 0x000099)
+      .circle(500, 500, 80, COLOR_BUTTON)
       .setAlpha(BUTTON_ALPHA)
       .setInteractive();
     buttonLeft.id = "left";
     buttonLeft.isPressed = false;
 
     buttonUp = this.add
-      .circle(600, 300, 80, 0x000099)
+      .circle(600, 370, 80, COLOR_BUTTON)
       .setAlpha(BUTTON_ALPHA)
       .setInteractive();
     buttonUp.id = "up";
     buttonUp.isPressed = false;
 
     buttonGrab = this.add
-      .circle(100, 500, 80, 0x000099)
+      .circle(100, 500, 80, COLOR_BUTTON)
       .setAlpha(BUTTON_ALPHA)
       .setInteractive();
     buttonGrab.id = "grab";
     buttonGrab.isPressed = false;
 
-    this.input.on("gameobjectdown", function (pointer, gameObject) {
+    let lastTime = 0;
+
+    this.input.on("gameobjectdown", (pointer, gameObject) => {
       console.log(gameObject.id);
+
+      let clickDelay = this.time.now - lastTime;
+      lastTime = this.time.now;
 
       if (gameObject.id == "win-screen") {
         if (isGameMaster) {
@@ -533,6 +543,11 @@ class Game extends Phaser.Scene {
       } else if (gameObject.id == "grab") {
         that.actionGrab();
       }
+
+      //Also treat double taps as a jump!
+      if (clickDelay < 350) {
+        that.actionUp();
+      }
     });
 
     this.input.on("gameobjectup", function (pointer, gameObject) {
@@ -544,7 +559,7 @@ class Game extends Phaser.Scene {
       }
       if (gameState != State.PLAYING) return;
       console.log(gameObject.id + " up");
-      gameObject.setFillStyle(0x000099);
+      gameObject.setFillStyle(COLOR_BUTTON);
       gameObject.isPressed = false;
       if (gameObject.id == "grab") {
         that.actionThrow();
@@ -556,6 +571,13 @@ class Game extends Phaser.Scene {
     this.createLobby();
     this.updateLobbyList();
     gameState = State.LOBBY;
+
+    if (window.DEV_AUTOSTART) {
+      //gameObject.destroy();
+      //TODO get rid of the lobby screen.
+      lobbyScreenRef && lobbyScreenRef.destroy();
+      this.resetGame(this);
+    }
   }
 
   pushThisPlayerToFirebase() {
@@ -572,7 +594,7 @@ class Game extends Phaser.Scene {
 
   updateLobbyList() {
     if (lobbyListRef) {
-      var list = "";
+      var list = "Players:\n";
       list =
         list +
         this.player.playerName +
@@ -598,7 +620,7 @@ class Game extends Phaser.Scene {
     var msg3 = "-";
     var backColor = 0xffffff;
     var borderColor = 0xffff99;
-    var board = this.add.rectangle(0, 0, 500, 200, backColor);
+    var board = this.add.rectangle(0, 0, 500, 400, backColor);
     board.setStrokeStyle(4, borderColor);
     //board.setInteractive();
     //board.id = "lobby-screen";
@@ -607,27 +629,38 @@ class Game extends Phaser.Scene {
 
     style = { font: "32px Arial", fill: "#000" };
 
-    var label1 = this.add.text(0, -30, msg1, style);
+    var label1 = this.add.text(0, -150, msg1, style);
     label1.setOrigin(0.5);
 
-    style = { font: "20px Arial", fill: "#666" };
+    style = { font: "20px Arial", fill: "#444" };
 
     if (isGameMaster) {
-      msg2 = "UR Gamemaster. Click to start game.";
+      msg2 =
+        "You are the Gamemaster. \nGive people the game code:   " + gameCode;
     } else {
-      msg2 = "Waiting for Gamemaster to start game";
+      msg2 = "Waiting for Gamemaster to start the game.";
     }
-    var label2 = this.add.text(0, 10, msg2, style);
+    var label2 = this.add.text(0, -100, msg2, style);
     label2.setOrigin(0.5);
 
-    var label3 = this.add.text(0, 20, msg3, style);
+    style = { font: "18px Arial", fill: "#666" };
+    var label3 = this.add.text(0, -50, msg3, style);
     label3.setOrigin(0.5, 0);
+
+    var msg4 = "";
+    style = { font: "20px Arial", fill: "#444" };
+    if (isGameMaster) {
+      msg4 = "Once everyone has joined, click to start the game.";
+    }
+    var label4 = this.add.text(0, 150, msg4, style);
+    label4.setOrigin(0.5, 0);
 
     var group = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT / 2, [
       board,
       label1,
       label2,
       label3,
+      label4,
     ]);
 
     group.label3 = label3;
@@ -662,6 +695,7 @@ class Game extends Phaser.Scene {
     //console.log("left:" + (cursorLeftButton && cursorLeftButton.isPressed));
     //console.log("right:" + (cursorRightButton && cursorRightButton.isPressed));
 
+    //console.log("update() gameState=" + gameState);
     // Create movement controller
     if (gameState != State.PLAYING) {
       return;
@@ -686,11 +720,6 @@ class Game extends Phaser.Scene {
     //Send info to Firebase and the other players.
     //If there is a change...
 
-    const THRESHOLD = 0.2;
-    const dx = Math.abs(this.player.x - this.previousX);
-    const dy = Math.abs(this.player.y - this.previousY);
-    //console.log("dx:" + dx + " dy:" + dy);
-
     if (grabbed) {
       this.matter.body.setPosition(grabbed, {
         x: this.player.body.position.x,
@@ -698,8 +727,6 @@ class Game extends Phaser.Scene {
       });
 
       if (GAME_TYPE == "CAPTURE_THE_FLAG") {
-        this.sendFlag(grabbed.gameObject);
-
         var fieldSide = Math.round(this.player.x / GAME_WIDTH) + 1;
         if (fieldSide == this.player.team) {
           console.log("got the flag to my side!");
@@ -708,12 +735,24 @@ class Game extends Phaser.Scene {
       }
     }
 
+    //for efficiencies sake - only send to db when player has moved a significant amount.
+    const THRESHOLD = 2.1;
+    const dx = Math.abs(this.player.x - this.previousX);
+    const dy = Math.abs(this.player.y - this.previousY);
+    //console.log("dx:" + dx + " dy:" + dy);
+
     if (
       dx > THRESHOLD ||
       dy > THRESHOLD ||
       this.player.isDead != this.player.previousIsDead ||
-      this.player.team != this.player.previousTeam
+      this.player.team != this.player.previousTeam ||
+      this.playerSprite.anims.currentAnim.key != this.player.previousAnimation
     ) {
+      //this.previousX = Math.round(this.player.x);
+      //this.previousY = Math.round(this.player.y);
+      this.previousX = this.player.x;
+      this.previousY = this.player.y;
+
       //console.log("write player change to firebase.");
 
       // Write player to firebase! NOTE. Send info
@@ -732,13 +771,26 @@ class Game extends Phaser.Scene {
           angle: Math.round(this.player.angle),
           animation: this.playerSprite.anims.currentAnim.key,
         });
+
+      if (grabbed) {
+        if (GAME_TYPE == "CAPTURE_THE_FLAG") {
+          //this.sendFlag(grabbed.gameObject);
+          const flag = grabbed.gameObject;
+          firebase
+            .database()
+            .ref(gameCode + "/objects/" + flag.id)
+            .update({
+              x: Math.round(flag.x),
+              y: Math.round(flag.y),
+            });
+        }
+      }
     }
-    //this.previousX = Math.round(this.player.x);
-    //this.previousY = Math.round(this.player.y);
-    this.previousX = this.player.x;
-    this.previousY = this.player.y;
+
     this.player.previousIsDead = this.player.isDead;
     this.player.previousTeam = this.player.team;
+    this.player.previousAnimation = this.playerSprite.anims.currentAnim.key;
+    //console.log("anim:" + this.playerSprite.anims.currentAnim.key);
   }
 
   updateScores() {
@@ -747,6 +799,7 @@ class Game extends Phaser.Scene {
   }
 
   showPointScreen(team) {
+    console.log("showPointScreen()");
     var msg1 = TEAM[team - 1].name + " scored!";
     var msg2 = "Next round starts soon";
     var msg3 = "-";
@@ -764,6 +817,7 @@ class Game extends Phaser.Scene {
   }
 
   showWinScreen(team) {
+    console.log("showWinScreen()");
     var msg1 = TEAM[team - 1].name + "  WINS!";
     var msg2 = "Congratulations! Gamemaster click to start new.";
     var msg3 = "-";
@@ -813,6 +867,7 @@ class Game extends Phaser.Scene {
       label3,
     ]);
 
+    //This does the countdown.
     var intervalRef;
     var seconds = GAME_POINT_SECONDS;
     if (isCountdown) {
@@ -867,6 +922,11 @@ class Game extends Phaser.Scene {
     var screen;
     grabbed = null;
     this.playerSprite.anims.play("turn"); //stop running.
+    //WORKING
+    buttonLeft.isPressed = false;
+    buttonRight.isPressed = false;
+    buttonUp.isPressed = false;
+    buttonGrab.isPressed = false;
 
     var that = this;
 
@@ -878,7 +938,6 @@ class Game extends Phaser.Scene {
       setTimeout(function () {
         clearInterval(screen.intervalRef);
         screen.destroy();
-        //Only 'lead' device should run this - that.resetRound(that);
       }, GAME_POINT_SECONDS * 1000);
     }
   }
@@ -939,6 +998,7 @@ class Game extends Phaser.Scene {
       }
     }
   }
+
   actionThrow() {
     if (spaceWasDown) {
       spaceWasDown = false;
@@ -1284,12 +1344,6 @@ class Game extends Phaser.Scene {
       render: { gameObject: { xOffset: 0, yOffset: 100 } },
     });
 
-    newPlayer
-      .setFrictionAir(0.01)
-      .setFriction(0.0)
-      // .setFrictionStatic(0)
-      .setBounce(0.0)
-      .setFixedRotation();
     //player = this.matter.add.image(0, 0, 'block');
 
     //var newPlayer = mSprite;
@@ -1313,6 +1367,14 @@ class Game extends Phaser.Scene {
 
     newPlayer.setExistingBody(compoundBody);
     newPlayer.body.label = "a player";
+
+    newPlayer
+      // .setFrictionAir(0.01)
+      // .setFriction(0.0)
+      // // .setFrictionStatic(0)
+      .setBounce(0.0);
+    // .setFixedRotation();
+
     //newPlayer.setPosition(400, 300);
     //newPlayer.body.setOffset(0, -200);
 
@@ -1525,10 +1587,11 @@ class Game extends Phaser.Scene {
               angle: 0,
               forceExceptionalUpdate: true,
             });
-
-          this.startRound();
         }
       });
+
+      this.startRound();
+
       // }, 1000);
 
       // Spawn players
@@ -1947,6 +2010,8 @@ class Game extends Phaser.Scene {
     //     incomingData.team
     // );
 
+    // console.log("U. x:" + player.x + " nx:" + incomingData.x);
+    // console.log("U. v:" + player.body.velocityX + " nx:" + incomingData.xVel);
     player.x = incomingData.x;
     player.y = incomingData.y;
     player.angle = incomingData.angle;

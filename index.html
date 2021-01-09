@@ -39,6 +39,10 @@
       button{
         font-size: 16pt;
       }
+      #joinGameCode{
+        font-size: 16pt;
+        width: 40px;
+      }
     </style>
 
 </head>
@@ -54,20 +58,28 @@
 
       <h1>Family Fun!</h1>
 
-      <h3>Create new game</h3>
-      <i>You'll get a code you can share with your family and friends.</i><br/>
-      <button id="newGame" type="button" >Create Game</button>
-      <hr/>
-      
       <h3>Join existing game</h3>
       Enter game code: <input id="joinGameCode" /> 
       <button id="joinGame" type="button" >Join</button>
+
+      <br/>
+      <br/>
+      <hr/>
+      <br/>
+      <h3>Create new game</h3>
+      <i>You'll get a code you can share with your family and friends.</i><br/>
+      <button id="newGame" type="button" >Create Game</button>
+
+      
+
     </civ>
 
 
 
 <div id="game-screen">
 <script type="module">
+
+window.DEV_AUTOSTART = true;
 
 import GameScene from "./src/scenes/game.js";
 //import LobbyScene from "./src/scenes/lobby.js";
@@ -84,10 +96,23 @@ var config = {
         x: 0,
       y: 0.4,
     },
+    debug: {
+      showBody: true,
+      showStaticBody: true,
+      showInternalEdges: true,
+      showSensors: false,
+    }
   },
 },
 scene: [GameScene],
 };
+
+if (window.DEV_AUTOSTART){
+  document.getElementById("home-screen").style.display="none";
+    window.gameJoinMode = "CREATE";
+
+  var game = new Phaser.Game(config); 
+}
 
 document.getElementById('newGame').onclick = (event) => {
     //(() => new Phaser.Game(config))();
