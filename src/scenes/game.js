@@ -4,8 +4,8 @@ allPlayers does not include the local player.
 The local player must be always taken into account as well.
 */
 
-const GAME_POINT_SECONDS = 5;
-const SCORE_TO_WIN = 2;
+const GAME_POINT_SECONDS = 2;
+const SCORE_TO_WIN = 1;
 
 const FLAG_Y = 500;
 const IS_MULTIPLAYER = true;
@@ -314,9 +314,6 @@ class Game extends Phaser.Scene {
     this.playerSprite = this.add.sprite(0, 0, "dude");
     this.player = this.createPlayer(playerData, this.playerSprite, true);
 
-    //Push player to firebase
-    this.pushThisPlayerToFirebase();
-
     if (window.gameJoinMode == GAMEJOINMODE.JOIN) {
       gameCode = document.getElementById("joinGameCode").value.toLowerCase();
       console.log("JOIN GAME:" + gameCode);
@@ -330,6 +327,9 @@ class Game extends Phaser.Scene {
     } else {
       console.log("No valid game join mode.");
     }
+
+    //Push player to firebase
+    this.pushThisPlayerToFirebase();
 
     const codeEl = document.getElementById(GAMECODE_ELEMENT_ID);
     codeEl.innerText = gameCode;
@@ -503,8 +503,10 @@ class Game extends Phaser.Scene {
       lastTime = this.time.now;
 
       if (gameObject.id == "win-screen") {
-        if (isGameMaster) {
-          console.log("Start new game!");
+        if (!isGameMaster) {
+          console.log("Gamemaster must click start - not you!");
+        } else {
+          console.log("OK Gamemaster, Start new game!");
           console.log(that);
           //console.log(gameObject);
           //TODO add timeout.
@@ -581,6 +583,9 @@ class Game extends Phaser.Scene {
   }
 
   pushThisPlayerToFirebase() {
+    console.log(
+      "pushThisPlayerToFirebase() " + gameCode + "/players/" + this.player.id
+    );
     firebase
       .database()
       .ref(gameCode + "/players/" + this.player.id)
@@ -614,8 +619,10 @@ class Game extends Phaser.Scene {
       lobbyListRef.setText(list);
     }
   }
-  createLobby() {
-    var msg1 = "Lobby";
+
+  createLobby(headline) {
+    lobbyScreenRef && lobbyScreenRef.destroy();
+    var msg1 = headline ? headline : "Lobby";
     var msg2 = "-";
     var msg3 = "-";
     var backColor = 0xffffff;
@@ -816,29 +823,34 @@ class Game extends Phaser.Scene {
     );
   }
 
-  showWinScreen(team) {
-    console.log("showWinScreen()");
-    var msg1 = TEAM[team - 1].name + "  WINS!";
-    var msg2 = "Congratulations! Gamemaster click to start new.";
-    var msg3 = "-";
-    var backColor = 0xffffff;
-    var borderColor = 0xffff99;
-    var screen = this.showScreen(
-      team,
-      msg1,
-      msg2,
-      msg3,
-      backColor,
-      borderColor,
-      false
-    );
+  // showWinScreen(team) {
+  //   console.log("showWinScreen()");
+  //   var msg1 = TEAM[team - 1].name + "  WINS!";
+  //   var msg2;
+  //   if (isGameMaster) {
+  //     msg2 = "Gamemaster, click to start new game.";
+  //   } else {
+  //     msg2 = "Waiting for Gamemaster to start new game.";
+  //   }
+  //   var msg3 = "";
+  //   var backColor = 0xffffff;
+  //   var borderColor = 0xffff99;
+  //   var screen = this.showScreen(
+  //     team,
+  //     msg1,
+  //     msg2,
+  //     msg3,
+  //     backColor,
+  //     borderColor,
+  //     false
+  //   );
 
-    //handle clicks.
-    screen.setInteractive();
-    screen.id = "win-screen";
+  //   //handle clicks.
+  //   screen.setInteractive();
+  //   screen.id = "win-screen";
 
-    return screen;
-  }
+  //   return screen;
+  // }
 
   showScreen(team, msg1, msg2, msg3, backColor, borderColor, isCountdown) {
     var board = this.add.rectangle(0, 0, 500, 200, backColor);
@@ -912,7 +924,24 @@ class Game extends Phaser.Scene {
         gameState: gameState,
       });
 
-    this.resetRound(this);
+    // Block all input.
+    // gameState = State.PREP_ROUND;
+    // firebase
+    //   .database()
+    //   .ref(gameCode + "/meta/")
+    //   .set({
+    //     gameState: State.PREP_ROUND,
+    //   });
+
+    if (gameState == State.POINT) {
+      setTimeout(() => {
+        this.resetRound(this);
+      }, 1000 * (GAME_POINT_SECONDS + 0.5));
+    }
+
+    //TRY GETTING RID OF THIS - And merge the firebase update with the next one.
+    // endRoundEveryone / this.resetRound.
+    //this.resetRound(this);
   }
 
   //Things that all devices must do.
@@ -931,7 +960,11 @@ class Game extends Phaser.Scene {
     var that = this;
 
     if (score >= SCORE_TO_WIN) {
-      screen = this.showWinScreen(team);
+      //screen = this.showWinScreen(team);
+
+      this.createLobby(TEAM[team - 1].name + " WINS!");
+      this.updateLobbyList();
+      gameState = State.LOBBY;
     } else {
       screen = this.showPointScreen(team);
 
@@ -1453,34 +1486,17 @@ class Game extends Phaser.Scene {
           }
         });
 
-        that.resetRoundShared(that);
+        that.resetRound(that);
       }, 1000);
     }
   }
 
-  // Bring everyone back to life. Set a random player as the imposter.
+  // Bring everyone back to life.
+  // Set a random player as the imposter.
+  // Set positions based on teams.
   resetRound(that) {
     //RESET GAME
     console.log("resetRound (" + that.player.id + ")");
-
-    // Block all input.
-    gameState = State.PREP_ROUND;
-    firebase
-      .database()
-      .ref(gameCode + "/meta/")
-      .set({
-        gameState: State.PREP_ROUND,
-      });
-
-    setTimeout(function () {
-      that.resetRoundShared(that);
-    }, 1000);
-  }
-
-  // Bring everyone back to life. Set a random player as the imposter.
-  resetRoundShared(that) {
-    //RESET GAME
-    console.log("resetRoundShared (" + that.player.id + ")");
 
     var team;
     if (GAME_TYPE == "BASKETBALL") {
@@ -1763,7 +1779,7 @@ class Game extends Phaser.Scene {
       .ref(gameCode)
       .set({
         meta: {
-          gameState: State.CLEAR,
+          gameState: State.LOBBY,
           gameMaster: this.player.id,
           scores: [0, 0],
         },
@@ -1855,6 +1871,8 @@ class Game extends Phaser.Scene {
         grabbed = null;
         screenRef && screenRef.destroy();
         lobbyScreenRef && lobbyScreenRef.destroy();
+        console.log("lobbyScreenRef" + lobbyScreenRef);
+        console.log("updateMeta Start Playing 2");
       }
     }
 
@@ -1925,7 +1943,10 @@ class Game extends Phaser.Scene {
   updatePlayers(data) {
     //console.log("updatePlayers");
 
-    if (!data) return;
+    if (!data) {
+      console.log("updatePlayers - no data.");
+      return;
+    }
 
     //Update current player (died?)
     this.updatePlayerNameDeathAndStuff(this.player, data[this.player.id]);
@@ -1967,6 +1988,7 @@ class Game extends Phaser.Scene {
         this.updatePlayer(player, incomingData);
       } else if (!this.allPlayers[id] && id != this.player.id) {
         // ADD New PLAYERS
+
         if (IS_MULTIPLAYER) {
           const playerData = data[id];
           console.log(
