@@ -7,7 +7,7 @@ The local player must be always taken into account as well.
 const GAME_POINT_SECONDS = 2;
 const SCORE_TO_WIN = 1;
 
-const FLAG_Y = 500;
+const FLAG_Y = 100;
 const IS_MULTIPLAYER = true;
 const IS_IMPOSTER = false;
 const HAS_BLOCKS = false;
