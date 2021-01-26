@@ -5,9 +5,9 @@ The local player must be always taken into account as well.
 */
 
 const GAME_POINT_SECONDS = 2;
-const SCORE_TO_WIN = 1;
+const SCORE_TO_WIN = 3;
 
-const FLAG_Y = 100;
+const FLAG_Y = 400; //100 // 500
 const IS_MULTIPLAYER = true;
 const IS_IMPOSTER = false;
 const HAS_BLOCKS = false;
@@ -39,6 +39,9 @@ const GAMEJOINMODE = {
 
 const NAME_ELEMENT_ID = "playerName";
 const GAMECODE_ELEMENT_ID = "gameCode";
+
+const AUTONAME = false;
+const AUTOGRAB = true;
 
 //Firebase config
 var firebase_config = {
@@ -269,7 +272,9 @@ class Game extends Phaser.Scene {
       }
     }
     //TODO - during development easiest to have these names.
-    nameFromCookie = "N-" + playerID;
+    if (AUTONAME) {
+      nameFromCookie = "N-" + playerID;
+    }
 
     elName.oninput = (event) => {
       this.playerName = event.target.value;
@@ -1118,6 +1123,17 @@ class Game extends Phaser.Scene {
                 grabbed = null;
               }
             }
+          } else if (
+            AUTOGRAB &&
+            collided &&
+            collided.type &&
+            collided.type == "FLAG"
+          ) {
+            console.log("bumped into flag:" + collided);
+            if (collided.team != this.player.team) {
+              grabbed = collided.body;
+              console.log("flag grabbed");
+            }
           }
         }
       }
@@ -1256,6 +1272,7 @@ class Game extends Phaser.Scene {
     var flag = this.add.polygon(x, y, flagVerts, color, 1.0);
     flag.id = id;
     flag.team = team;
+    flag.type = "FLAG";
     // this.matter.add.gameObject(flag, {
     //   shape: { type: "fromVerts", verts: flagVerts, flagInternal: true },
     // });

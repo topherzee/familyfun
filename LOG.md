@@ -5,7 +5,6 @@ Game needs to end properly.
 
 WORKING !
 Devmode -start automatically.
-Move around with 1 player - left & right.
 
 Ipad controls are too hard.
 Automatically grab flag.

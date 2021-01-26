@@ -16,7 +16,7 @@
 </style>
 
 <meta charset="utf-8">
-    <meta name="viewport" content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=0.5, width=device-width, 
+    <meta name="viewport" content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, width=device-width, 
     user-scalable=no">
     <meta name="full-screen" content="yes" />
     <meta name="screen-orientation" content="landscape" />
@@ -39,9 +39,16 @@
       button{
         font-size: 16pt;
       }
+      button.small{
+        font-size: 10pt;
+      }
       #joinGameCode{
         font-size: 16pt;
         width: 40px;
+      }
+      #game-bar{
+        position: fixed;
+        z-index: 100;
       }
     </style>
 
@@ -50,6 +57,7 @@
 
     <div id="game-bar">
         Family Fun - Your Name: <input id="playerName" /> 
+        <button id="dummy" type="button" class="small" >Save</button> <!-- this silly button just gets focus out of the name field!-->
         &nbsp;&nbsp;&nbsp;
         Game Code: <span id="gameCode">-</span>
     </div>
@@ -74,12 +82,13 @@
 
     </civ>
 
+    <div id="mygame"></div>
 
 
 <div id="game-screen">
 <script type="module">
 
-//window.DEV_AUTOSTART = true;
+window.DEV_AUTOSTART = false;
 
 import GameScene from "./src/scenes/game.js";
 //import LobbyScene from "./src/scenes/lobby.js";
@@ -88,6 +97,13 @@ var config = {
       type: Phaser.AUTO,
       width: 800,
       height: 600,
+      scale: {
+            parent: 'mygame',
+            mode: Phaser.Scale.FIT,
+            autoCenter: Phaser.Scale.CENTER_BOTH,
+            width: 800,
+            height: 600
+        },
       physics: {
   default: "matter",
 
